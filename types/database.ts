@@ -118,6 +118,13 @@ export interface PublicOpportunity {
   views_count: number;
   published_at: string | null;
   created_at: string;
+  source_id?: string | null;
+  source_name?: string | null;
+  source_identifier?: string | null;
+  source_url?: string | null;
+  dedup_hash?: string | null;
+  last_verified_at?: string | null;
+  verification_status?: 'active' | 'dead_link' | 'expired_deadline' | 'source_removed';
 }
 
 // Unlocked view for authenticated users with active 30-day membership
@@ -126,4 +133,45 @@ export interface UnlockedOpportunity extends PublicOpportunity {
   employer_phone: string | null;
   application_url: string | null;
   application_instructions: string | null;
+}
+
+export interface AuthorizedSource {
+  id: string;
+  name: string;
+  source_type: 'greenhouse' | 'lever' | 'jooble' | 'rss' | 'json_api' | 'partner_api' | 'career_page';
+  endpoint_url: string;
+  api_key_header: string | null;
+  default_category_id: string | null;
+  is_active: boolean;
+  last_polled_at: string | null;
+  last_poll_status: string | null;
+  total_imported_records: number;
+  import_frequency_minutes: number;
+  next_scheduled_poll_at: string | null;
+  auto_publish: boolean;
+  default_attribution: string | null;
+  rate_limit_rpm: number;
+  last_error_message: string | null;
+  config: Record<string, any>;
+  attribution_required: boolean;
+  commercial_republication_status: 'permitted' | 'attribution_required' | 'under_review' | 'partner_agreement';
+  created_by?: string | null;
+  created_at: string;
+}
+
+export interface ImportExecutionLog {
+  id: string;
+  source_id: string;
+  source_name: string | null;
+  started_at: string;
+  completed_at: string | null;
+  status: 'running' | 'success' | 'failed' | 'partial';
+  discovered_count: number;
+  imported_count: number;
+  duplicates_count: number;
+  errors_count: number;
+  error_details?: any;
+  triggered_by: 'scheduler' | 'manual_admin';
+  admin_id: string | null;
+  created_at: string;
 }

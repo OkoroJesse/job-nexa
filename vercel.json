@@ -4,6 +4,16 @@
   "devCommand": "npm run dev",
   "installCommand": "npm install",
   "regions": ["lhr1"],
+  "crons": [
+    {
+      "path": "/api/cron/import-jobs",
+      "schedule": "0 */6 * * *"
+    },
+    {
+      "path": "/api/cron/check-freshness",
+      "schedule": "0 2 * * *"
+    }
+  ],
   "headers": [
     {
       "source": "/api/(.*)",
