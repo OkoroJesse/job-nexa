@@ -28,6 +28,8 @@ export default function Navbar() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [userDropdownOpen, setUserDropdownOpen] = useState(false);
 
+  const isAdmin = user && ['super_admin', 'admin', 'finance_auditor', 'moderator'].includes(user.role);
+
   // Close mobile drawer when route changes
   useEffect(() => {
     setMobileMenuOpen(false);
@@ -127,7 +129,12 @@ export default function Navbar() {
                     {user.full_name}
                   </div>
                   <div className="text-[10px] font-medium flex items-center gap-1">
-                    {isActiveMember ? (
+                    {isAdmin ? (
+                      <span className="text-purple-700 font-bold flex items-center gap-0.5">
+                        <ShieldCheck className="w-2.5 h-2.5 text-purple-600" />
+                        {user.role === 'super_admin' ? 'Super Admin' : 'Admin'}
+                      </span>
+                    ) : isActiveMember ? (
                       <span className="text-emerald-700 font-bold flex items-center gap-0.5">
                         <Sparkles className="w-2.5 h-2.5" /> 30-Day Pro
                       </span>
@@ -147,6 +154,17 @@ export default function Navbar() {
                     <p className="text-[11px] text-surface-400">Signed in as</p>
                     <p className="text-xs font-semibold text-surface-900 truncate">{user.email}</p>
                   </div>
+
+                  {isAdmin && (
+                    <Link
+                      href="/admin"
+                      onClick={() => setUserDropdownOpen(false)}
+                      className="flex items-center gap-2 px-4 py-2 text-xs text-purple-700 bg-purple-50/70 hover:bg-purple-100/80 font-bold border-b border-surface-100 transition"
+                    >
+                      <ShieldCheck className="w-4 h-4 text-purple-600" />
+                      <span>Admin Dashboard</span>
+                    </Link>
+                  )}
 
                   <Link
                     href="/dashboard"
@@ -260,7 +278,11 @@ export default function Navbar() {
                     <p className="text-sm font-bold text-surface-900">{user.full_name}</p>
                     <p className="text-xs text-surface-500 truncate">{user.email}</p>
                     <div className="mt-1.5">
-                      {isActiveMember ? (
+                      {isAdmin ? (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-bold bg-purple-100 text-purple-900 border border-purple-200">
+                          <ShieldCheck className="w-3 h-3 text-purple-700" /> {user.role === 'super_admin' ? 'Super Admin' : 'Admin'}
+                        </span>
+                      ) : isActiveMember ? (
                         <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-bold bg-brand-100 text-brand-900 border border-brand-200">
                           <Sparkles className="w-3 h-3 text-brand-700" /> Active 30-Day Pro
                         </span>
@@ -271,6 +293,17 @@ export default function Navbar() {
                       )}
                     </div>
                   </div>
+
+                  {isAdmin && (
+                    <Link
+                      href="/admin"
+                      onClick={() => setMobileMenuOpen(false)}
+                      className="flex items-center gap-2.5 px-3.5 py-2 rounded-lg text-sm font-bold text-purple-700 bg-purple-50 hover:bg-purple-100 transition"
+                    >
+                      <ShieldCheck className="w-4 h-4 text-purple-600" />
+                      <span>Admin Dashboard</span>
+                    </Link>
+                  )}
 
                   <Link
                     href="/dashboard"
