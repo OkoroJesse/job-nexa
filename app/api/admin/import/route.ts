@@ -158,6 +158,13 @@ export async function POST(req: NextRequest) {
     if (isConfigured) {
       const adminClient = createAdminClient();
 
+      // Get a fallback category ID if not provided
+      const { data: defaultCat } = await adminClient
+        .from('categories')
+        .select('id')
+        .limit(1)
+        .maybeSingle();
+
       for (const rec of parsedRecords) {
         const slug = `${rec.title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '')}-${Date.now().toString(36)}`;
 
@@ -179,7 +186,7 @@ export async function POST(req: NextRequest) {
           title: rec.title,
           slug,
           organization_name: rec.organization_name,
-          category_id: rec.category_id || 'cat-1',
+          category_id: rec.category_id || defaultCat?.id || null,
           state_id: rec.state_id || null,
           city: rec.city || null,
           opportunity_type: rec.opportunity_type || 'full_time',

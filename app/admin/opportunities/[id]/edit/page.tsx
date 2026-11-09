@@ -3,16 +3,27 @@
 import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { SEED_CATEGORIES, SEED_STATES, SEED_OPPORTUNITIES } from '@/lib/mock-data';
-import { Briefcase, ArrowLeft, Save, Lock, Trash2 } from 'lucide-react';
+import { Briefcase, ArrowLeft, Save, Lock, Trash2, Loader2 } from 'lucide-react';
+
+interface TaxonomyCategory {
+  id: string;
+  name: string;
+}
+
+interface TaxonomyState {
+  id: string;
+  name: string;
+}
 
 export default function EditOpportunityPage({ params }: { params: { id: string } }) {
   const router = useRouter();
   const [loading, setLoading] = useState(true);
+  const [categories, setCategories] = useState<TaxonomyCategory[]>([]);
+  const [states, setStates] = useState<TaxonomyState[]>([]);
   const [title, setTitle] = useState('');
   const [organization, setOrganization] = useState('');
-  const [categoryId, setCategoryId] = useState('cat-1');
-  const [stateId, setStateId] = useState('state-1');
+  const [categoryId, setCategoryId] = useState('');
+  const [stateId, setStateId] = useState('');
   const [city, setCity] = useState('');
   const [type, setType] = useState('full_time');
   const [policy, setPolicy] = useState('on_site');
@@ -29,27 +40,46 @@ export default function EditOpportunityPage({ params }: { params: { id: string }
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
-    // Look up opportunity from mock or API
-    const opp = SEED_OPPORTUNITIES.find((o) => o.id === params.id) || SEED_OPPORTUNITIES[0];
-    if (opp) {
-      setTitle(opp.title);
-      setOrganization(opp.organization_name);
-      setCategoryId(opp.category_id);
-      setStateId(opp.state_id || 'state-1');
-      setCity(opp.city || '');
-      setType(opp.opportunity_type);
-      setPolicy(opp.workplace_policy);
-      setSalary(opp.salary_or_stipend_range || '');
-      setDescription(opp.description);
-      setRequirements(opp.requirements);
-      setIsLocked(opp.is_locked);
-      setEmployerEmail(opp.employer_email || '');
-      setEmployerPhone(opp.employer_phone || '');
-      setApplicationUrl(opp.application_url || '');
-      setInstructions(opp.application_instructions || '');
-      setIsFeatured(opp.is_featured);
+    async function loadData() {
+      try {
+        const [oppRes, taxRes] = await Promise.all([
+          fetch(`/api/admin/opportunities/${params.id}`),
+          fetch('/api/taxonomies'),
+        ]);
+
+        const oppData = await oppRes.json();
+        const taxData = await taxRes.json();
+
+        if (taxData.categories) setCategories(taxData.categories);
+        if (taxData.states) setStates(taxData.states);
+
+        if (oppData.opportunity) {
+          const opp = oppData.opportunity;
+          setTitle(opp.title || '');
+          setOrganization(opp.organization_name || '');
+          setCategoryId(opp.category_id || taxData.categories?.[0]?.id || '');
+          setStateId(opp.state_id || taxData.states?.[0]?.id || '');
+          setCity(opp.city || '');
+          setType(opp.opportunity_type || 'full_time');
+          setPolicy(opp.workplace_policy || 'on_site');
+          setSalary(opp.salary_or_stipend_range || '');
+          setDescription(opp.description || '');
+          setRequirements(opp.requirements || '');
+          setIsLocked(opp.is_locked ?? true);
+          setEmployerEmail(opp.employer_email || '');
+          setEmployerPhone(opp.employer_phone || '');
+          setApplicationUrl(opp.application_url || '');
+          setInstructions(opp.application_instructions || '');
+          setStatus(opp.status || 'published');
+          setIsFeatured(opp.is_featured ?? false);
+        }
+      } catch (err) {
+        console.error('Error loading opportunity:', err);
+      } finally {
+        setLoading(false);
+      }
     }
-    setLoading(false);
+    loadData();
   }, [params.id]);
 
   const handleUpdate = async (e: React.FormEvent) => {
@@ -177,7 +207,7 @@ export default function EditOpportunityPage({ params }: { params: { id: string }
                 onChange={(e) => setCategoryId(e.target.value)}
                 className="w-full px-3 py-2 text-xs text-surface-900 border border-surface-200 rounded-xl focus:outline-none focus:ring-1 focus:ring-primary"
               >
-                {SEED_CATEGORIES.map((cat) => (
+                {categories.map((cat) => (
                   <option key={cat.id} value={cat.id}>{cat.name}</option>
                 ))}
               </select>
@@ -190,7 +220,7 @@ export default function EditOpportunityPage({ params }: { params: { id: string }
                 onChange={(e) => setStateId(e.target.value)}
                 className="w-full px-3 py-2 text-xs text-surface-900 border border-surface-200 rounded-xl focus:outline-none focus:ring-1 focus:ring-primary"
               >
-                {SEED_STATES.map((st) => (
+                {states.map((st) => (
                   <option key={st.id} value={st.id}>{st.name}</option>
                 ))}
               </select>

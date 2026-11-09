@@ -24,7 +24,7 @@ import {
 
 export default function Navbar() {
   const pathname = usePathname();
-  const { user, isActiveMember, logout, loginDemoUser } = useAuth();
+  const { user, isActiveMember, logout } = useAuth();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [userDropdownOpen, setUserDropdownOpen] = useState(false);
 
@@ -66,36 +66,6 @@ export default function Navbar() {
             <ShieldCheck className="w-4 h-4 text-brand-300 shrink-0" />
             <span className="truncate">JobNexa • Nigeria&apos;s Verified Opportunities Network across all 36 States & FCT</span>
           </div>
-
-          {/* Test perspective switcher: Only rendered in development on non-homepage routes */}
-          {process.env.NODE_ENV === 'development' && !isHomepage && (
-            <div className="hidden xl:flex items-center gap-2 text-[11px] bg-emerald-950/60 px-2.5 py-0.5 rounded-full border border-emerald-600/40">
-              <span className="text-emerald-300 font-mono text-[10px]">Dev Testing:</span>
-              <button
-                onClick={() => loginDemoUser('free')}
-                className={`px-1.5 py-0.5 rounded text-[10px] font-semibold transition ${
-                  user && !isActiveMember
-                    ? 'bg-amber-400 text-slate-900 font-bold'
-                    : 'text-emerald-100 hover:text-white'
-                }`}
-                title="Switch to Free Seeker (Locked Contact view)"
-              >
-                Free
-              </button>
-              <span className="text-emerald-600">|</span>
-              <button
-                onClick={() => loginDemoUser('pro')}
-                className={`px-1.5 py-0.5 rounded text-[10px] font-semibold transition ${
-                  isActiveMember
-                    ? 'bg-brand-400 text-slate-900 font-bold'
-                    : 'text-emerald-100 hover:text-white'
-                }`}
-                title="Switch to Active Pro Member (Unlocked Contact view)"
-              >
-                Pro (₦3,500)
-              </button>
-            </div>
-          )}
         </div>
       </div>
 

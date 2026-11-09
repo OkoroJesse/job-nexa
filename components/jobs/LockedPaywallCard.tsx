@@ -6,7 +6,7 @@ import { Lock, ShieldCheck, Check, Sparkles, CreditCard, Building } from 'lucide
 import { useAuth } from '@/components/providers/AuthProvider';
 
 export default function LockedPaywallCard() {
-  const { user, loginDemoUser, simulatePaystackSuccess } = useAuth();
+  const { user } = useAuth();
 
   return (
     <div className="bg-gradient-to-br from-surface-900 to-surface-800 text-white rounded-2xl p-6 sm:p-8 shadow-lg border border-surface-700 relative overflow-hidden">
@@ -59,22 +59,13 @@ export default function LockedPaywallCard() {
             </div>
           </div>
 
-          <div className="flex flex-col sm:flex-row items-center gap-3 w-full sm:w-auto">
+          <div className="flex items-center gap-3 w-full sm:w-auto">
             <Link
               href="/pricing"
               className="w-full sm:w-auto text-center px-6 py-3 rounded-lg text-sm font-bold bg-brand-500 hover:bg-brand-400 text-slate-950 transition shadow-sm"
             >
               Get 30-Day Pass (₦3,500)
             </Link>
-
-            {/* Quick Demo Simulator button */}
-            <button
-              onClick={simulatePaystackSuccess}
-              className="w-full sm:w-auto text-center px-4 py-3 rounded-lg text-xs font-semibold bg-surface-700 hover:bg-surface-600 text-surface-200 transition border border-surface-600"
-              title="Instantly simulates Paystack payment for testing"
-            >
-              Simulate Instant Unlock
-            </button>
           </div>
         </div>
 

@@ -1,7 +1,6 @@
 import React from 'react';
 import { notFound } from 'next/navigation';
 import Link from 'next/link';
-import { cookies } from 'next/headers';
 import { getOpportunityBySlug } from '@/lib/opportunities';
 import { getServerAuthSession } from '@/lib/auth-helpers';
 import LockedPaywallCard from '@/components/jobs/LockedPaywallCard';
@@ -28,12 +27,8 @@ interface JobDetailPageProps {
 }
 
 export default async function JobDetailPage({ params }: JobDetailPageProps) {
-  // Check active membership status from server session or cookie
-  const cookieStore = cookies();
-  const sessionActiveCookie = cookieStore.get('jobnexa_is_active')?.value === 'true';
-  const { isActiveMember: sessionActiveFromDb } = await getServerAuthSession();
-  
-  const hasActiveAccess = sessionActiveCookie || sessionActiveFromDb;
+  // Check active membership status strictly from verified server session in Supabase database
+  const { isActiveMember: hasActiveAccess } = await getServerAuthSession();
 
   // Retrieve opportunity data with strict server-level masking
   const { opportunity, isUnlocked } = await getOpportunityBySlug(params.slug, hasActiveAccess);

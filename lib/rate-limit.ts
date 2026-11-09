@@ -31,7 +31,10 @@ type LimiterName =
   | 'paystack_init'       // Paystack initialization: 5 req / 60 s per user/IP
   | 'paystack_verify'     // Paystack verify: 10 req / 60 s per user/IP (must handle redirects)
   | 'bank_transfer'       // Bank transfer submit: 3 req / 300 s per user (heavy)
-  | 'webhook_paystack';   // Paystack webhook: 60 req / 60 s per IP (Paystack retries aggressively)
+  | 'webhook_paystack'   // Paystack webhook: 60 req / 60 s per IP (Paystack retries aggressively)
+  | 'auth_login'          // Login attempts: 5 req / 60 s per IP (brute-force protection)
+  | 'auth_register'       // Registrations: 3 req / 60 s per IP (spam account protection)
+  | 'auth_forgot_password'; // Password resets: 3 req / 300 s per IP
 
 interface LimiterConfig {
   requests: number;
@@ -39,10 +42,13 @@ interface LimiterConfig {
 }
 
 const LIMITER_CONFIGS: Record<LimiterName, LimiterConfig> = {
-  paystack_init:    { requests: 5,  window: '60 s'  },
-  paystack_verify:  { requests: 10, window: '60 s'  },
-  bank_transfer:    { requests: 3,  window: '300 s' },
-  webhook_paystack: { requests: 60, window: '60 s'  },
+  paystack_init:        { requests: 5,  window: '60 s'  },
+  paystack_verify:      { requests: 10, window: '60 s'  },
+  bank_transfer:        { requests: 3,  window: '300 s' },
+  webhook_paystack:     { requests: 60, window: '60 s'  },
+  auth_login:           { requests: 5,  window: '60 s'  },
+  auth_register:        { requests: 3,  window: '60 s'  },
+  auth_forgot_password: { requests: 3,  window: '300 s' },
 };
 
 // Cache Ratelimit instances so we don't re-instantiate per request

@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   UploadCloud, 
   FileText, 
@@ -13,65 +13,58 @@ import {
   AlertCircle,
   Rss,
   Globe,
-  RefreshCw
+  RefreshCw,
+  Loader2
 } from 'lucide-react';
 
 interface StagedOpportunity {
   id: string;
   title: string;
-  organization: string;
-  location: string;
-  type: string;
+  organization_name?: string;
+  organization?: string;
+  city?: string;
+  location?: string;
+  opportunity_type?: string;
+  type?: string;
+  employer_email?: string;
   employerEmail?: string;
+  employer_phone?: string;
   employerPhone?: string;
+  application_url?: string;
   applicationUrl?: string;
-  source: 'csv' | 'json' | 'raw_paste' | 'rss_api';
   status: 'draft' | 'published';
 }
 
-const INITIAL_STAGED: StagedOpportunity[] = [
-  {
-    id: 'stage-1',
-    title: 'Customer Success Specialist (Fintech)',
-    organization: 'Moniepoint Microfinance Bank',
-    location: 'Ibadan, Oyo State',
-    type: 'full_time',
-    employerEmail: 'careers@moniepoint.com',
-    source: 'csv',
-    status: 'draft',
-  },
-  {
-    id: 'stage-2',
-    title: 'NYSC PPA: Teaching Fellow in Physics & Coding',
-    organization: 'Corona Secondary School',
-    location: 'Agbara, Ogun State',
-    type: 'nysc_ppa',
-    employerEmail: 'hr@coronaschools.org',
-    employerPhone: '+234 803 111 9900',
-    source: 'raw_paste',
-    status: 'draft',
-  },
-  {
-    id: 'stage-3',
-    title: 'Regional Field Agronomist',
-    organization: 'Flour Mills of Nigeria Plc',
-    location: 'Zaria, Kaduna State',
-    type: 'full_time',
-    employerEmail: 'recruitment@fmnplc.com',
-    source: 'json',
-    status: 'draft',
-  },
-];
-
 export default function ImportCentrePage() {
   const [activeTab, setActiveTab] = useState<'raw_paste' | 'csv' | 'json' | 'rss_api'>('raw_paste');
-  const [stagedList, setStagedList] = useState<StagedOpportunity[]>(INITIAL_STAGED);
+  const [stagedList, setStagedList] = useState<StagedOpportunity[]>([]);
+  const [loadingStaged, setLoadingStaged] = useState(true);
   const [rawText, setRawText] = useState('');
   const [jsonText, setJsonText] = useState('');
   const [feedUrl, setFeedUrl] = useState('');
   const [csvFile, setCsvFile] = useState<File | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const [importSummary, setImportSummary] = useState<string | null>(null);
+  const [actionLoading, setActionLoading] = useState<string | null>(null);
+
+  const fetchDrafts = async () => {
+    setLoadingStaged(true);
+    try {
+      const res = await fetch('/api/admin/opportunities?status=draft');
+      const data = await res.json();
+      if (res.ok && data.opportunities) {
+        setStagedList(data.opportunities);
+      }
+    } catch (e) {
+      console.warn('Error fetching drafts:', e);
+    } finally {
+      setLoadingStaged(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchDrafts();
+  }, []);
 
   const handleImportSubmit = async (mode: 'raw_paste' | 'json' | 'csv' | 'rss') => {
     setIsProcessing(true);
@@ -94,26 +87,10 @@ export default function ImportCentrePage() {
 
       if (res.ok && data.success) {
         setImportSummary(data.message);
-        // Refresh local staging list with the new draft
-        if (mode === 'raw_paste') {
-          const lines = rawText.split('\n').filter(Boolean);
-          const emailMatch = rawText.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/);
-          const phoneMatch = rawText.match(/(?:\+234|0)[789][01]\d{8}/);
-
-          const newStaged: StagedOpportunity = {
-            id: `stage-${Date.now()}`,
-            title: lines[0]?.substring(0, 50) || 'Parsed Opportunity Broadcast',
-            organization: 'Verified Nigerian Employer',
-            location: 'Lagos / Nationwide',
-            type: /nysc|ppa/i.test(rawText) ? 'nysc_ppa' : 'full_time',
-            employerEmail: emailMatch ? emailMatch[0] : undefined,
-            employerPhone: phoneMatch ? phoneMatch[0] : undefined,
-            source: 'raw_paste',
-            status: 'draft', // MANDATORY INVARIANT
-          };
-          setStagedList([newStaged, ...stagedList]);
-          setRawText('');
-        }
+        setRawText('');
+        setJsonText('');
+        setCsvFile(null);
+        await fetchDrafts();
       } else {
         setImportSummary(`Error: ${data.error || 'Import failed'}`);
       }
@@ -124,17 +101,46 @@ export default function ImportCentrePage() {
     }
   };
 
-  const handlePublish = (id: string) => {
-    setStagedList((prev) =>
-      prev.map((item) =>
-        item.id === id ? { ...item, status: 'published' } : item
-      )
-    );
-    alert('Opportunity approved and published live to JobNexa directory!');
+  const handlePublish = async (id: string) => {
+    setActionLoading(id);
+    try {
+      const res = await fetch(`/api/admin/opportunities/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: 'published', published_at: new Date().toISOString() }),
+      });
+      if (res.ok) {
+        setStagedList((prev) =>
+          prev.map((item) => (item.id === id ? { ...item, status: 'published' } : item))
+        );
+        alert('Opportunity approved and published live to JobNexa directory!');
+      } else {
+        alert('Failed to publish opportunity');
+      }
+    } catch {
+      alert('Error updating opportunity status');
+    } finally {
+      setActionLoading(null);
+    }
   };
 
-  const handleDelete = (id: string) => {
-    setStagedList((prev) => prev.filter((item) => item.id !== id));
+  const handleDelete = async (id: string) => {
+    if (!confirm('Are you sure you want to discard this staged opportunity?')) return;
+    setActionLoading(id);
+    try {
+      const res = await fetch(`/api/admin/opportunities/${id}`, {
+        method: 'DELETE',
+      });
+      if (res.ok) {
+        setStagedList((prev) => prev.filter((item) => item.id !== id));
+      } else {
+        alert('Failed to discard opportunity');
+      }
+    } catch {
+      alert('Error deleting opportunity');
+    } finally {
+      setActionLoading(null);
+    }
   };
 
   return (
@@ -335,48 +341,58 @@ export default function ImportCentrePage() {
         </div>
 
         <div className="divide-y divide-surface-100">
-          {stagedList.map((item) => (
-            <div key={item.id} className="p-4 sm:p-5 flex flex-col md:flex-row md:items-center justify-between gap-4 text-xs">
-              <div className="space-y-1">
-                <div className="flex items-center gap-2">
-                  <span className="font-bold text-sm text-surface-900">{item.title}</span>
-                  <span className="text-surface-500 font-semibold">• {item.organization}</span>
-                  <span className="px-2 py-0.5 rounded text-[10px] font-semibold uppercase bg-surface-100 text-surface-600">
-                    {item.source}
-                  </span>
-                </div>
-                <div className="text-surface-500 text-xs">
-                  Location: {item.location} • Type: {item.type} • Contact: <span className="font-mono text-primary font-semibold">{item.employerEmail || 'Protected'}</span>
-                  {item.employerPhone && <span> • WhatsApp: {item.employerPhone}</span>}
-                </div>
-              </div>
-
-              <div className="flex items-center gap-2 shrink-0">
-                {item.status === 'draft' ? (
-                  <>
-                    <button
-                      onClick={() => handlePublish(item.id)}
-                      className="px-3.5 py-1.5 rounded-lg bg-primary hover:bg-primary-hover text-white font-bold flex items-center gap-1.5 shadow-sm"
-                    >
-                      <CheckCircle2 className="w-3.5 h-3.5" />
-                      <span>Approve & Publish Live</span>
-                    </button>
-                    <button
-                      onClick={() => handleDelete(item.id)}
-                      className="p-1.5 rounded-lg text-surface-400 hover:text-red-600 hover:bg-red-50"
-                      title="Discard listing"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  </>
-                ) : (
-                  <span className="px-3 py-1 rounded-full bg-emerald-100 text-emerald-800 font-bold text-[11px]">
-                    ✓ Published Live to Directory
-                  </span>
-                )}
-              </div>
+          {loadingStaged ? (
+            <div className="p-8 text-center text-surface-400 flex flex-col items-center gap-2">
+              <Loader2 className="w-5 h-5 animate-spin text-primary" />
+              <span className="text-xs">Loading staged drafts from database...</span>
             </div>
-          ))}
+          ) : stagedList.length === 0 ? (
+            <div className="p-8 text-center text-xs text-surface-500">
+              No staged drafts currently pending review. Upload or parse an opportunity above to stage.
+            </div>
+          ) : (
+            stagedList.map((item) => (
+              <div key={item.id} className="p-4 sm:p-5 flex flex-col md:flex-row md:items-center justify-between gap-4 text-xs">
+                <div className="space-y-1">
+                  <div className="flex items-center gap-2">
+                    <span className="font-bold text-sm text-surface-900">{item.title}</span>
+                    <span className="text-surface-500 font-semibold">• {item.organization_name || item.organization}</span>
+                  </div>
+                  <div className="text-surface-500 text-xs">
+                    Location: {item.city || item.location || 'Nationwide'} • Type: {item.opportunity_type || item.type || 'Full Time'} • Contact: <span className="font-mono text-primary font-semibold">{item.employer_email || item.employerEmail || 'Protected'}</span>
+                    {(item.employer_phone || item.employerPhone) && <span> • WhatsApp: {item.employer_phone || item.employerPhone}</span>}
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2 shrink-0">
+                  {item.status === 'draft' ? (
+                    <>
+                      <button
+                        onClick={() => handlePublish(item.id)}
+                        disabled={actionLoading === item.id}
+                        className="px-3.5 py-1.5 rounded-lg bg-primary hover:bg-primary-hover text-white font-bold flex items-center gap-1.5 shadow-sm transition disabled:opacity-50"
+                      >
+                        <CheckCircle2 className="w-3.5 h-3.5" />
+                        <span>Approve & Publish Live</span>
+                      </button>
+                      <button
+                        onClick={() => handleDelete(item.id)}
+                        disabled={actionLoading === item.id}
+                        className="p-1.5 rounded-lg text-surface-400 hover:text-red-600 hover:bg-red-50 transition disabled:opacity-50"
+                        title="Discard listing"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </>
+                  ) : (
+                    <span className="px-3 py-1 rounded-full bg-emerald-100 text-emerald-800 font-bold text-[11px]">
+                      ✓ Published Live to Directory
+                    </span>
+                  )}
+                </div>
+              </div>
+            ))
+          )}
         </div>
       </div>
     </div>

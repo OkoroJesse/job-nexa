@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import { useAuth } from '@/components/providers/AuthProvider';
 import {
   Check,
@@ -25,7 +26,8 @@ interface BankConfig {
 }
 
 export default function PricingPage() {
-  const { user, isActiveMember, subscription, simulatePaystackSuccess, submitBankTransferReceipt } =
+  const router = useRouter();
+  const { user, isActiveMember, subscription, submitBankTransferReceipt, refreshSession } =
     useAuth();
 
   const [bankConfig, setBankConfig] = useState<BankConfig | null>(null);
@@ -38,6 +40,69 @@ export default function PricingPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submissionFeedback, setSubmissionFeedback] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const [paystackLoading, setPaystackLoading] = useState(false);
+  const [paystackMsg, setPaystackMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+
+  // Handle Paystack callback verification if redirected back with ?reference=
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const urlParams = new URLSearchParams(window.location.search);
+    const reference = urlParams.get('reference') || urlParams.get('trxref');
+    if (reference && user) {
+      async function verify() {
+        setPaystackLoading(true);
+        try {
+          const res = await fetch('/api/payments/paystack/verify', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ reference, userId: user?.id }),
+          });
+          const data = await res.json();
+          if (data.success) {
+            setPaystackMsg({ type: 'success', text: 'Payment confirmed! 30-Day Pro Membership is now active.' });
+            await refreshSession();
+          } else {
+            setPaystackMsg({ type: 'error', text: data.error || 'Payment verification failed.' });
+          }
+        } catch {
+          setPaystackMsg({ type: 'error', text: 'Unable to verify payment. Please contact support.' });
+        } finally {
+          setPaystackLoading(false);
+        }
+      }
+      verify();
+    }
+  }, [user, refreshSession]);
+
+  const handlePaystackCheckout = async () => {
+    if (!user) {
+      router.push('/login?redirect=/pricing');
+      return;
+    }
+    setPaystackLoading(true);
+    setPaystackMsg(null);
+    try {
+      const res = await fetch('/api/payments/paystack/initialize', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: user.email,
+          userId: user.id,
+          callbackUrl: `${window.location.origin}/pricing`,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.authorizationUrl) {
+        setPaystackMsg({ type: 'error', text: data.error || 'Failed to initialize Paystack checkout.' });
+        setPaystackLoading(false);
+        return;
+      }
+      window.location.href = data.authorizationUrl;
+    } catch {
+      setPaystackMsg({ type: 'error', text: 'Payment gateway communication error. Please try again.' });
+      setPaystackLoading(false);
+    }
+  };
 
   useEffect(() => {
     async function fetchBankConfig() {
@@ -246,13 +311,26 @@ export default function PricingPage() {
                         <span className="font-semibold text-surface-700">None (One-time)</span>
                       </div>
                     </div>
+                    {paystackMsg && (
+                      <div
+                        className={`p-3 rounded-xl text-xs ${
+                          paystackMsg.type === 'success'
+                            ? 'bg-emerald-50 border border-emerald-200 text-emerald-900'
+                            : 'bg-red-50 border border-red-200 text-red-700'
+                        }`}
+                      >
+                        {paystackMsg.text}
+                      </div>
+                    )}
+
                     <button
                       type="button"
-                      onClick={simulatePaystackSuccess}
-                      className="w-full py-3.5 rounded-xl text-sm font-bold bg-primary hover:bg-primary-hover text-white transition shadow-sm flex items-center justify-center gap-2"
+                      disabled={paystackLoading}
+                      onClick={handlePaystackCheckout}
+                      className="w-full py-3.5 rounded-xl text-sm font-bold bg-primary hover:bg-primary-hover text-white transition shadow-sm flex items-center justify-center gap-2 disabled:opacity-70"
                     >
                       <CreditCard className="w-4 h-4" />
-                      <span>Pay ₦3,500 via Paystack</span>
+                      <span>{paystackLoading ? 'Connecting to Paystack...' : 'Pay ₦3,500 via Paystack'}</span>
                     </button>
                     <p className="text-[11px] text-surface-400 text-center">
                       256-bit encrypted • PCI-DSS Level 1 Certified

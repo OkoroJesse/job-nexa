@@ -59,25 +59,13 @@ export async function getAdminSession(): Promise<AdminSession> {
     };
   }
 
-  // Local development / demo fallback only (disabled in production):
-  if (process.env.NODE_ENV === 'production') {
-    return {
-      isAdmin: false,
-      userId: null,
-      email: null,
-      role: null,
-      fullName: null,
-    };
-  }
-
-  // Local development / demo fallback:
-  // When operating in demo mode, provide an active super_admin session for the admin console
+  // When Supabase is not configured or session is invalid, reject admin access
   return {
-    isAdmin: true,
-    userId: 'admin-system-root',
-    email: 'admin@jobnexa.ng',
-    role: 'super_admin',
-    fullName: 'JobNexa Systems Administrator',
+    isAdmin: false,
+    userId: null,
+    email: null,
+    role: null,
+    fullName: null,
   };
 }
 

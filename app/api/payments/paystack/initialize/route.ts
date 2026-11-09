@@ -83,14 +83,13 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    // Sandbox / demo fallback
-    return NextResponse.json({
-      success: true,
-      reference,
-      authorizationUrl: `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/dashboard?payment_simulated=true&ref=${reference}`,
-      accessCode: `demo_access_${Date.now()}`,
-      mode: 'sandbox_simulation',
-    });
+    return NextResponse.json(
+      {
+        error:
+          'Paystack payment gateway is currently not configured on this server. Please use Direct Bank Transfer or contact support.',
+      },
+      { status: 503 }
+    );
   } catch (error) {
     console.error('Paystack initialization error:', error);
     return NextResponse.json({ error: 'Failed to initialize Paystack transaction' }, { status: 500 });

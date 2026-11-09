@@ -4,13 +4,11 @@ import React, { useState } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
-import { useAuth } from '@/components/providers/AuthProvider';
 import { createClient } from '@/lib/supabase/client';
-import { Briefcase, Lock, Mail, ArrowRight, ShieldCheck, Sparkles } from 'lucide-react';
+import { Lock, Mail, ArrowRight } from 'lucide-react';
 
 export default function LoginPage() {
   const router = useRouter();
-  const { loginDemoUser } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
@@ -22,46 +20,52 @@ export default function LoginPage() {
     setErrorMsg(null);
 
     try {
+      // 1. Rate-limit and server-side credential verification
+      const verifyRes = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password }),
+      });
+
+      const verifyData = await verifyRes.json();
+
+      if (!verifyRes.ok) {
+        setErrorMsg(verifyData.error || 'Authentication failed. Please verify your credentials.');
+        setLoading(false);
+        return;
+      }
+
+      // 2. Hydrate client-side Supabase Auth session
       const supabase = createClient();
       const { data, error } = await supabase.auth.signInWithPassword({
-        email,
+        email: email.trim().toLowerCase(),
         password,
       });
 
       if (error) {
-        // If Supabase credentials are placeholder or user not found, offer demo fallback
-        setErrorMsg(`${error.message}. You can also use the Instant Test Login buttons below.`);
-      } else if (data?.user) {
-        // Query user's role to direct admins to /admin and job seekers to /dashboard
-        const { data: profile } = await supabase
-          .from('profiles')
-          .select('role')
-          .eq('id', data.user.id)
-          .single();
+        setErrorMsg(error.message);
+        setLoading(false);
+        return;
+      }
 
-        const adminRoles = ['super_admin', 'admin', 'finance_auditor', 'moderator'];
-        const redirectParam = typeof window !== 'undefined' 
-          ? new URLSearchParams(window.location.search).get('redirect') 
+      if (data?.user) {
+        const redirectParam = typeof window !== 'undefined'
+          ? new URLSearchParams(window.location.search).get('redirect')
           : null;
 
         if (redirectParam && redirectParam.startsWith('/')) {
           router.push(redirectParam);
-        } else if (profile && adminRoles.includes(profile.role)) {
-          router.push('/admin');
+        } else if (verifyData.redirectTo) {
+          router.push(verifyData.redirectTo);
         } else {
           router.push('/dashboard');
         }
       }
     } catch {
-      setErrorMsg('Network error. You can use the 1-Click Demo Login below to test the platform.');
+      setErrorMsg('Unable to connect to authentication server. Please check your internet connection.');
     } finally {
       setLoading(false);
     }
-  };
-
-  const handleQuickDemo = (mode: 'free' | 'pro') => {
-    loginDemoUser(mode);
-    router.push('/dashboard');
   };
 
   return (
@@ -84,13 +88,13 @@ export default function LoginPage() {
           Welcome Back
         </h1>
         <p className="text-xs text-surface-500">
-          Sign in to access your saved opportunities and application dossiers.
+          Sign in to your candidate or administrator account.
         </p>
       </div>
 
       <div className="bg-white p-6 sm:p-8 rounded-3xl border border-surface-200 shadow-sm space-y-5">
         {errorMsg && (
-          <div className="p-3 rounded-xl bg-red-50 border border-red-200 text-xs text-red-700 leading-relaxed">
+          <div className="p-3.5 rounded-xl bg-red-50 border border-red-200 text-xs text-red-700 leading-relaxed">
             {errorMsg}
           </div>
         )}
@@ -112,7 +116,15 @@ export default function LoginPage() {
           </div>
 
           <div>
-            <label className="block text-xs font-semibold text-surface-700 mb-1">Password</label>
+            <div className="flex items-center justify-between mb-1">
+              <label className="block text-xs font-semibold text-surface-700">Password</label>
+              <Link
+                href="/forgot-password"
+                className="text-[11px] font-semibold text-primary hover:underline"
+              >
+                Forgot password?
+              </Link>
+            </div>
             <div className="relative">
               <Lock className="w-4 h-4 text-surface-400 absolute left-3 top-3" />
               <input
@@ -131,40 +143,12 @@ export default function LoginPage() {
             disabled={loading}
             className="w-full py-3 rounded-xl text-xs font-bold bg-primary hover:bg-primary-hover text-white transition shadow-sm flex items-center justify-center gap-2"
           >
-            <span>{loading ? 'Signing in...' : 'Sign In with Supabase'}</span>
+            <span>{loading ? 'Signing in...' : 'Sign In'}</span>
             <ArrowRight className="w-3.5 h-3.5" />
           </button>
         </form>
 
-        {/* 1-Click Test Perspectives for Assessment */}
-        <div className="pt-4 border-t border-surface-100 space-y-2.5">
-          <p className="text-[11px] font-bold uppercase tracking-wider text-surface-500 text-center">
-            Instant Test Login (No password needed)
-          </p>
-
-          <div className="grid grid-cols-2 gap-2">
-            <button
-              onClick={() => handleQuickDemo('free')}
-              className="p-2.5 rounded-xl border border-surface-200 hover:border-surface-300 bg-surface-50 text-left transition"
-            >
-              <div className="text-xs font-bold text-surface-900">Free Seeker</div>
-              <div className="text-[10px] text-surface-500">Locked contact view</div>
-            </button>
-
-            <button
-              onClick={() => handleQuickDemo('pro')}
-              className="p-2.5 rounded-xl border border-brand-300 hover:border-brand-400 bg-brand-50/50 text-left transition"
-            >
-              <div className="text-xs font-bold text-primary flex items-center gap-1">
-                <Sparkles className="w-3 h-3 text-brand-500" />
-                <span>30-Day Pro</span>
-              </div>
-              <div className="text-[10px] text-emerald-700">Unlocked contact view</div>
-            </button>
-          </div>
-        </div>
-
-        <div className="text-center text-xs text-surface-500 pt-2">
+        <div className="text-center text-xs text-surface-500 pt-2 border-t border-surface-100">
           Don&apos;t have an account?{' '}
           <Link href="/register" className="font-bold text-primary hover:underline">
             Register for free

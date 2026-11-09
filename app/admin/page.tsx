@@ -1,5 +1,6 @@
 import React from 'react';
 import Link from 'next/link';
+import { createAdminClient } from '@/lib/supabase/admin';
 import { 
   Users, 
   CreditCard, 
@@ -10,7 +11,43 @@ import {
   ArrowRight
 } from 'lucide-react';
 
-export default function AdminOverviewPage() {
+export const dynamic = 'force-dynamic';
+
+export default async function AdminOverviewPage() {
+  const adminClient = createAdminClient();
+
+  const [
+    { count: pendingReceiptsCount },
+    { count: activeSubscribersCount },
+    { count: publishedOpportunitiesCount },
+    { count: draftOpportunitiesCount },
+  ] = await Promise.all([
+    adminClient
+      .from('payment_transactions')
+      .select('id', { count: 'exact', head: true })
+      .eq('channel', 'bank_transfer')
+      .eq('status', 'pending_verification'),
+    adminClient
+      .from('user_subscriptions')
+      .select('id', { count: 'exact', head: true })
+      .eq('status', 'active')
+      .gt('expires_at', new Date().toISOString()),
+    adminClient
+      .from('opportunities')
+      .select('id', { count: 'exact', head: true })
+      .eq('status', 'published'),
+    adminClient
+      .from('opportunities')
+      .select('id', { count: 'exact', head: true })
+      .eq('status', 'draft'),
+  ]);
+
+  const pendingReceipts = pendingReceiptsCount || 0;
+  const activeSubscribers = activeSubscribersCount || 0;
+  const publishedCount = publishedOpportunitiesCount || 0;
+  const draftCount = draftOpportunitiesCount || 0;
+  const mrrFormatted = (activeSubscribers * 3500).toLocaleString('en-NG');
+
   return (
     <div className="space-y-8">
       <div>
@@ -31,7 +68,7 @@ export default function AdminOverviewPage() {
               <CheckSquare className="w-4 h-4" />
             </span>
           </div>
-          <div className="text-2xl font-extrabold text-surface-900">3 Receipts</div>
+          <div className="text-2xl font-extrabold text-surface-900">{pendingReceipts} Receipts</div>
           <Link
             href="/admin/verifications"
             className="text-[11px] font-bold text-primary hover:underline flex items-center gap-1 pt-1"
@@ -47,8 +84,8 @@ export default function AdminOverviewPage() {
               <Users className="w-4 h-4" />
             </span>
           </div>
-          <div className="text-2xl font-extrabold text-surface-900">184 Subscribers</div>
-          <span className="text-[11px] text-surface-400">₦644,000 active MRR equivalent</span>
+          <div className="text-2xl font-extrabold text-surface-900">{activeSubscribers} Subscribers</div>
+          <span className="text-[11px] text-surface-400">₦{mrrFormatted} active MRR equivalent</span>
         </div>
 
         <div className="bg-white p-5 rounded-2xl border border-surface-200 shadow-sm space-y-2">
@@ -58,8 +95,13 @@ export default function AdminOverviewPage() {
               <Briefcase className="w-4 h-4" />
             </span>
           </div>
-          <div className="text-2xl font-extrabold text-surface-900">8 Listings</div>
-          <span className="text-[11px] text-surface-400">Across 36 states & FCT</span>
+          <div className="text-2xl font-extrabold text-surface-900">{publishedCount} Listings</div>
+          <Link
+            href="/admin/opportunities"
+            className="text-[11px] font-bold text-primary hover:underline flex items-center gap-1 pt-1"
+          >
+            Manage Catalog →
+          </Link>
         </div>
 
         <div className="bg-white p-5 rounded-2xl border border-surface-200 shadow-sm space-y-2">
@@ -69,7 +111,7 @@ export default function AdminOverviewPage() {
               <TrendingUp className="w-4 h-4" />
             </span>
           </div>
-          <div className="text-2xl font-extrabold text-surface-900">5 Drafts</div>
+          <div className="text-2xl font-extrabold text-surface-900">{draftCount} Drafts</div>
           <Link
             href="/admin/import-centre"
             className="text-[11px] font-bold text-primary hover:underline flex items-center gap-1 pt-1"
@@ -86,7 +128,7 @@ export default function AdminOverviewPage() {
           <span>Operational Rule: Bank Receipt Verification Invariant</span>
         </div>
         <p className="text-xs sm:text-sm text-surface-600 leading-relaxed max-w-3xl">
-          Under JobNexa&apos;s security protocol, <strong>a user receipt upload must NEVER automatically activate membership</strong>. An administrator or finance auditor must physically log in to the Zenith Bank corporate banking app, confirm that ₦3,500 has settled on the bank statement, and only then click &quot;Approve & Activate&quot;. The 30-day membership clock strictly commences from the timestamp of confirmed activation.
+          Under JobNexa&apos;s security protocol, <strong>a user receipt upload must NEVER automatically activate membership</strong>. An administrator or finance auditor must physically log in to the designated receiving bank mobile app or corporate portal, confirm that ₦3,500 has settled on the bank statement, and only then click &quot;Approve & Activate&quot;. The 30-day membership clock strictly commences from the timestamp of confirmed activation.
         </p>
         <Link
           href="/admin/verifications"

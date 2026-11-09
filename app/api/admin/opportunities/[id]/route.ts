@@ -81,7 +81,7 @@ export async function PATCH(
       return NextResponse.json({ success: true, opportunity: data });
     }
 
-    return NextResponse.json({ success: true, message: 'Updated successfully in demo mode' });
+    return NextResponse.json({ error: 'Database service not configured' }, { status: 503 });
   } catch (error) {
     return NextResponse.json({ error: 'Failed to update opportunity' }, { status: 500 });
   }
@@ -105,7 +105,11 @@ export async function DELETE(
 
     if (isConfigured) {
       const adminClient = createAdminClient();
-      await adminClient.from('opportunities').delete().eq('id', id);
+      const { error } = await adminClient.from('opportunities').delete().eq('id', id);
+
+      if (error) {
+        return NextResponse.json({ error: error.message }, { status: 400 });
+      }
 
       await recordAdminAuditLog(
         adminSession.userId || 'admin',
@@ -114,9 +118,11 @@ export async function DELETE(
         id,
         { deleted: true }
       );
+
+      return NextResponse.json({ success: true, message: 'Deleted successfully' });
     }
 
-    return NextResponse.json({ success: true, message: 'Deleted successfully' });
+    return NextResponse.json({ error: 'Database service not configured' }, { status: 503 });
   } catch (error) {
     return NextResponse.json({ error: 'Failed to delete opportunity' }, { status: 500 });
   }

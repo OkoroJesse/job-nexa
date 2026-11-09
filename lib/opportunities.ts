@@ -1,5 +1,4 @@
 import { PublicOpportunity, UnlockedOpportunity, Category, LocationState } from '@/types/database';
-import { SEED_OPPORTUNITIES, SEED_CATEGORIES, SEED_STATES } from './mock-data';
 import { createPublicServerClient } from './supabase/server';
 
 export interface OpportunityFilterParams {
@@ -35,189 +34,124 @@ export function maskOpportunityForPublic(opp: UnlockedOpportunity): PublicOpport
 
 /**
  * Retrieve a list of opportunities with optional filtering.
- * Returns public-safe masked data.
+ * Queries the real Supabase database and returns public-safe masked data.
  */
 export async function getOpportunities(filters: OpportunityFilterParams = {}): Promise<PublicOpportunity[]> {
   try {
-    const isConfigured = 
-      process.env.NEXT_PUBLIC_SUPABASE_URL && 
-      !process.env.NEXT_PUBLIC_SUPABASE_URL.includes('placeholder.supabase.co');
+    const supabase = createPublicServerClient();
+    let query = supabase
+      .from('opportunities')
+      .select(`
+        id, title, slug, organization_name, organization_logo_url,
+        category_id, state_id, city, workplace_policy, opportunity_type,
+        experience_level, salary_or_stipend_range, description, requirements,
+        benefits, application_deadline, is_locked, is_featured, views_count,
+        published_at, created_at,
+        category:categories(id, name, slug, icon_name),
+        state:locations_states(id, name, slug, geopolitical_zone)
+      `)
+      .eq('status', 'published')
+      .order('created_at', { ascending: false });
 
-    if (isConfigured) {
-      const supabase = createPublicServerClient();
-      let query = supabase
-        .from('opportunities')
-        .select(`
-          id, title, slug, organization_name, organization_logo_url,
-          category_id, state_id, city, workplace_policy, opportunity_type,
-          experience_level, salary_or_stipend_range, description, requirements,
-          benefits, application_deadline, is_locked, is_featured, views_count,
-          published_at, created_at,
-          category:categories(id, name, slug, icon_name),
-          state:locations_states(id, name, slug, geopolitical_zone)
-        `)
-        .eq('status', 'published')
-        .order('created_at', { ascending: false });
-
-      if (filters.query) {
-        query = query.ilike('title', `%${filters.query}%`);
-      }
-      if (filters.categoryId) {
-        query = query.eq('category_id', filters.categoryId);
-      }
-      if (filters.stateId) {
-        query = query.eq('state_id', filters.stateId);
-      }
-      if (filters.opportunityType) {
-        query = query.eq('opportunity_type', filters.opportunityType);
-      }
-      if (filters.workplacePolicy) {
-        query = query.eq('workplace_policy', filters.workplacePolicy);
-      }
-      if (filters.isFeatured !== undefined) {
-        query = query.eq('is_featured', filters.isFeatured);
-      }
-
-      const { data, error } = await query;
-      if (!error && data && data.length > 0) {
-        return data as unknown as PublicOpportunity[];
-      }
+    if (filters.query) {
+      query = query.or(`title.ilike.%${filters.query}%,organization_name.ilike.%${filters.query}%,description.ilike.%${filters.query}%`);
     }
+    if (filters.categoryId) {
+      query = query.eq('category_id', filters.categoryId);
+    }
+    if (filters.stateId) {
+      query = query.eq('state_id', filters.stateId);
+    }
+    if (filters.opportunityType) {
+      query = query.eq('opportunity_type', filters.opportunityType);
+    }
+    if (filters.workplacePolicy) {
+      query = query.eq('workplace_policy', filters.workplacePolicy);
+    }
+    if (filters.isFeatured !== undefined) {
+      query = query.eq('is_featured', filters.isFeatured);
+    }
+
+    const { data, error } = await query;
+    if (error) {
+      console.warn('Opportunities fetch query error:', error.message);
+      return [];
+    }
+
+    return (data || []) as unknown as PublicOpportunity[];
   } catch (err) {
-    console.warn('Falling back to local data store:', err);
+    console.warn('Opportunities service error:', err);
+    return [];
   }
-
-  // Fallback to high-fidelity seed dataset
-  let results = [...SEED_OPPORTUNITIES];
-
-  if (filters.query) {
-    const q = filters.query.toLowerCase();
-    results = results.filter(
-      (o) =>
-        o.title.toLowerCase().includes(q) ||
-        o.organization_name.toLowerCase().includes(q) ||
-        o.description.toLowerCase().includes(q)
-    );
-  }
-
-  if (filters.categorySlug) {
-    results = results.filter((o) => o.category?.slug === filters.categorySlug);
-  } else if (filters.categoryId) {
-    results = results.filter((o) => o.category_id === filters.categoryId);
-  }
-
-  if (filters.stateSlug) {
-    results = results.filter((o) => o.state?.slug === filters.stateSlug);
-  } else if (filters.stateId) {
-    results = results.filter((o) => o.state_id === filters.stateId);
-  }
-
-  if (filters.opportunityType) {
-    results = results.filter((o) => o.opportunity_type === filters.opportunityType);
-  }
-
-  if (filters.workplacePolicy) {
-    results = results.filter((o) => o.workplace_policy === filters.workplacePolicy);
-  }
-
-  if (filters.isFeatured !== undefined) {
-    results = results.filter((o) => o.is_featured === filters.isFeatured);
-  }
-
-  return results.map(maskOpportunityForPublic);
 }
 
 /**
- * Fetch a single opportunity by slug.
+ * Fetch a single opportunity by slug from the database.
  */
 export async function getOpportunityBySlug(
   slug: string,
   userSubscriptionActive: boolean = false
 ): Promise<{ opportunity: PublicOpportunity | UnlockedOpportunity | null; isUnlocked: boolean }> {
   try {
-    const isConfigured = 
-      process.env.NEXT_PUBLIC_SUPABASE_URL && 
-      !process.env.NEXT_PUBLIC_SUPABASE_URL.includes('placeholder.supabase.co');
+    const supabase = createPublicServerClient();
 
-    if (isConfigured) {
-      const supabase = createPublicServerClient();
-      
-      const { data, error } = await supabase
-        .from('opportunities')
-        .select(`
-          *,
-          category:categories(id, name, slug, icon_name),
-          state:locations_states(id, name, slug, geopolitical_zone)
-        `)
-        .eq('slug', slug)
-        .eq('status', 'published')
-        .single();
+    const { data, error } = await supabase
+      .from('opportunities')
+      .select(`
+        *,
+        category:categories(id, name, slug, icon_name),
+        state:locations_states(id, name, slug, geopolitical_zone)
+      `)
+      .eq('slug', slug)
+      .eq('status', 'published')
+      .maybeSingle();
 
-      if (!error && data) {
-        const opp = data as unknown as UnlockedOpportunity;
-        if (!opp.is_locked || userSubscriptionActive) {
-          return { opportunity: opp, isUnlocked: true };
-        } else {
-          return { opportunity: maskOpportunityForPublic(opp), isUnlocked: false };
-        }
+    if (!error && data) {
+      const opp = data as unknown as UnlockedOpportunity;
+      if (!opp.is_locked || userSubscriptionActive) {
+        return { opportunity: opp, isUnlocked: true };
+      } else {
+        return { opportunity: maskOpportunityForPublic(opp), isUnlocked: false };
       }
     }
+
+    return { opportunity: null, isUnlocked: false };
   } catch (err) {
-    console.warn('Falling back to local data store for slug lookup:', err);
+    console.warn('Opportunity slug lookup error:', err);
+    return { opportunity: null, isUnlocked: false };
   }
-
-  const raw = SEED_OPPORTUNITIES.find((o) => o.slug === slug);
-  if (!raw) return { opportunity: null, isUnlocked: false };
-
-  if (!raw.is_locked || userSubscriptionActive) {
-    return { opportunity: raw, isUnlocked: true };
-  }
-
-  return { opportunity: maskOpportunityForPublic(raw), isUnlocked: false };
 }
 
 export async function getCategories(): Promise<Category[]> {
   try {
-    const isConfigured = 
-      process.env.NEXT_PUBLIC_SUPABASE_URL && 
-      !process.env.NEXT_PUBLIC_SUPABASE_URL.includes('placeholder.supabase.co');
+    const supabase = createPublicServerClient();
+    const { data, error } = await supabase
+      .from('categories')
+      .select('*')
+      .order('sort_order', { ascending: true });
 
-    if (isConfigured) {
-      const supabase = createPublicServerClient();
-      const { data, error } = await supabase
-        .from('categories')
-        .select('*')
-        .order('sort_order', { ascending: true });
-
-      if (!error && data && data.length > 0) {
-        return data as Category[];
-      }
+    if (!error && data) {
+      return data as Category[];
     }
-  } catch {
-    // fallback
+  } catch (err) {
+    console.warn('Categories fetch error:', err);
   }
-  return SEED_CATEGORIES;
+  return [];
 }
 
 export async function getStates(): Promise<LocationState[]> {
   try {
-    const isConfigured = 
-      process.env.NEXT_PUBLIC_SUPABASE_URL && 
-      !process.env.NEXT_PUBLIC_SUPABASE_URL.includes('placeholder.supabase.co');
+    const supabase = createPublicServerClient();
+    const { data, error } = await supabase
+      .from('locations_states')
+      .select('*')
+      .order('sort_order', { ascending: true });
 
-    if (isConfigured) {
-      const supabase = createPublicServerClient();
-      const { data, error } = await supabase
-        .from('locations_states')
-        .select('*')
-        .order('sort_order', { ascending: true });
-
-      if (!error && data && data.length > 0) {
-        return data as LocationState[];
-      }
+    if (!error && data) {
+      return data as LocationState[];
     }
-  } catch {
-    // fallback
+  } catch (err) {
+    console.warn('States fetch error:', err);
   }
-  return SEED_STATES;
+  return [];
 }

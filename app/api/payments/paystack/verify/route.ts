@@ -70,16 +70,10 @@ export async function POST(req: NextRequest) {
         );
       }
     } else {
-      // Sandbox / demo mode
-      paymentVerified = true;
-      paymentData = {
-        reference: cleanReference,
-        amount: 350000,
-        currency: 'NGN',
-        status: 'success',
-        channel: 'card',
-        paid_at: new Date().toISOString(),
-      };
+      return NextResponse.json(
+        { error: 'Paystack secret key is not configured on this server' },
+        { status: 503 }
+      );
     }
 
     if (paymentVerified) {

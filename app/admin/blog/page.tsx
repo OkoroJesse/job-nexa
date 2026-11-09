@@ -1,36 +1,79 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { BLOG_POSTS, BlogPost } from '@/lib/blog-data';
-import { BookOpen, Plus, Calendar, Eye, CheckCircle2, Edit3, Trash2 } from 'lucide-react';
+import { BookOpen, Plus, Calendar, Eye, CheckCircle2, Edit3, Trash2, Loader2 } from 'lucide-react';
+
+interface BlogPostItem {
+  id: string;
+  slug: string;
+  title: string;
+  excerpt: string;
+  category: string;
+  read_time_minutes?: number;
+  published_at?: string;
+  created_at: string;
+}
 
 export default function AdminBlogPage() {
-  const [posts, setPosts] = useState<BlogPost[]>(BLOG_POSTS);
+  const [posts, setPosts] = useState<BlogPostItem[]>([]);
+  const [loading, setLoading] = useState(true);
   const [isCreating, setIsCreating] = useState(false);
   const [newTitle, setNewTitle] = useState('');
   const [newCategory, setNewCategory] = useState('Career Advice');
   const [newContent, setNewContent] = useState('');
+  const [submitting, setSubmitting] = useState(false);
 
-  const handleCreate = (e: React.FormEvent) => {
+  useEffect(() => {
+    fetchPosts();
+  }, []);
+
+  const fetchPosts = async () => {
+    setLoading(true);
+    try {
+      const res = await fetch('/api/admin/blog');
+      const data = await res.json();
+      if (res.ok && data.posts) {
+        setPosts(data.posts);
+      }
+    } catch (e) {
+      console.warn('Error fetching blog posts:', e);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newTitle || !newContent) return;
+    if (!newTitle.trim() || !newContent.trim()) return;
 
-    const newPost: BlogPost = {
-      slug: newTitle.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, ''),
-      title: newTitle,
-      excerpt: newContent.substring(0, 150) + '...',
-      category: newCategory,
-      date: 'Today',
-      readTime: '5 min read',
-      content: newContent,
-    };
+    setSubmitting(true);
+    try {
+      const res = await fetch('/api/admin/blog', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: newTitle.trim(),
+          category: newCategory,
+          content: newContent.trim(),
+        }),
+      });
 
-    setPosts([newPost, ...posts]);
-    setIsCreating(false);
-    setNewTitle('');
-    setNewContent('');
-    alert('Blog post published to public Editorial section!');
+      const data = await res.json();
+      if (res.ok && data.post) {
+        setPosts((prev) => [data.post, ...prev]);
+        setIsCreating(false);
+        setNewTitle('');
+        setNewContent('');
+        alert('Blog post published live to public Editorial section!');
+      } else {
+        alert(data.error || 'Failed to publish post');
+      }
+    } catch {
+      alert('Error creating blog post');
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (
@@ -47,7 +90,7 @@ export default function AdminBlogPage() {
 
         <button
           onClick={() => setIsCreating(true)}
-          className="px-4 py-2.5 rounded-xl text-xs font-bold bg-primary hover:bg-primary-hover text-white shadow-sm flex items-center gap-2 shrink-0"
+          className="px-4 py-2.5 rounded-xl text-xs font-bold bg-primary hover:bg-primary-hover text-white shadow-sm flex items-center gap-2 shrink-0 transition"
         >
           <Plus className="w-4 h-4" />
           <span>Write New Article</span>
@@ -109,9 +152,10 @@ export default function AdminBlogPage() {
 
           <button
             type="submit"
-            className="px-6 py-2.5 rounded-xl text-xs font-bold bg-primary text-white"
+            disabled={submitting}
+            className="px-6 py-2.5 rounded-xl text-xs font-bold bg-primary hover:bg-primary-hover text-white transition disabled:opacity-50"
           >
-            Publish Article
+            {submitting ? 'Publishing...' : 'Publish Article'}
           </button>
         </form>
       )}
@@ -124,36 +168,51 @@ export default function AdminBlogPage() {
           <span className="text-surface-500 font-semibold">SEO Optimized</span>
         </div>
 
-        <div className="divide-y divide-surface-100">
-          {posts.map((post) => (
-            <div key={post.slug} className="p-4 sm:p-5 flex flex-col md:flex-row md:items-center justify-between gap-4 text-xs">
-              <div className="space-y-1">
-                <div className="flex items-center gap-2">
-                  <span className="font-bold text-sm text-surface-900">{post.title}</span>
-                  <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-primary-light text-primary">
-                    {post.category}
-                  </span>
+        {loading ? (
+          <div className="p-12 text-center text-surface-400 flex flex-col items-center gap-3">
+            <Loader2 className="w-6 h-6 animate-spin text-primary" />
+            <p className="text-xs">Loading articles from database...</p>
+          </div>
+        ) : posts.length === 0 ? (
+          <div className="p-12 text-center space-y-3">
+            <BookOpen className="w-10 h-10 text-surface-300 mx-auto" />
+            <div className="text-sm font-bold text-surface-900">No articles published yet</div>
+            <p className="text-xs text-surface-500 max-w-sm mx-auto">
+              Click &quot;Write New Article&quot; to publish your first anti-scam guide or career advisory.
+            </p>
+          </div>
+        ) : (
+          <div className="divide-y divide-surface-100">
+            {posts.map((post) => (
+              <div key={post.id || post.slug} className="p-4 sm:p-5 flex flex-col md:flex-row md:items-center justify-between gap-4 text-xs">
+                <div className="space-y-1">
+                  <div className="flex items-center gap-2">
+                    <span className="font-bold text-sm text-surface-900">{post.title}</span>
+                    <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-primary-light text-primary">
+                      {post.category}
+                    </span>
+                  </div>
+                  <div className="text-surface-500 text-xs flex items-center gap-3">
+                    <span>{new Date(post.published_at || post.created_at).toLocaleDateString('en-GB')}</span>
+                    <span>•</span>
+                    <span>{post.read_time_minutes || 5} min read</span>
+                  </div>
                 </div>
-                <div className="text-surface-500 text-xs flex items-center gap-3">
-                  <span>{post.date}</span>
-                  <span>•</span>
-                  <span>{post.readTime}</span>
-                </div>
-              </div>
 
-              <div className="flex items-center gap-2 shrink-0">
-                <Link
-                  href={`/blog/${post.slug}`}
-                  target="_blank"
-                  className="px-3 py-1.5 rounded-lg border border-surface-200 hover:bg-surface-50 text-surface-700 font-semibold flex items-center gap-1.5"
-                >
-                  <Eye className="w-3.5 h-3.5" />
-                  <span>Read on Site</span>
-                </Link>
+                <div className="flex items-center gap-2 shrink-0">
+                  <Link
+                    href={`/blog/${post.slug}`}
+                    target="_blank"
+                    className="px-3 py-1.5 rounded-lg border border-surface-200 hover:bg-surface-50 text-surface-700 font-semibold flex items-center gap-1.5 transition"
+                  >
+                    <Eye className="w-3.5 h-3.5" />
+                    <span>Read on Site</span>
+                  </Link>
+                </div>
               </div>
-            </div>
-          ))}
-        </div>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );

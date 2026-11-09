@@ -1,5 +1,5 @@
 import { MetadataRoute } from 'next';
-import { SEED_OPPORTUNITIES, SEED_STATES, SEED_CATEGORIES } from '@/lib/mock-data';
+import { getOpportunities, getStates, getCategories } from '@/lib/opportunities';
 import { BLOG_POSTS } from '@/lib/blog-data';
 
 const BASE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://jobnexa.ng';
@@ -7,7 +7,7 @@ const BASE_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://jobnexa.ng';
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const now = new Date();
 
-  // ── Static pages ───────────────────────────────────────────────────────────
+  // 1. Static platform pages
   const staticPages: MetadataRoute.Sitemap = [
     { url: BASE_URL, lastModified: now, changeFrequency: 'daily', priority: 1.0 },
     { url: `${BASE_URL}/jobs`, lastModified: now, changeFrequency: 'hourly', priority: 0.9 },
@@ -21,44 +21,40 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     { url: `${BASE_URL}/register`, lastModified: now, changeFrequency: 'monthly', priority: 0.4 },
   ];
 
-  // ── Opportunity / job pages ────────────────────────────────────────────────
-  const jobPages: MetadataRoute.Sitemap = SEED_OPPORTUNITIES.map((job) => ({
+  // 2. Dynamic live opportunities
+  const opportunities = await getOpportunities();
+  const jobPages: MetadataRoute.Sitemap = opportunities.map((job) => ({
     url: `${BASE_URL}/jobs/${job.slug}`,
     lastModified: job.published_at ? new Date(job.published_at) : now,
     changeFrequency: 'weekly' as const,
     priority: job.is_featured ? 0.85 : 0.75,
   }));
 
-  // ── State / location pages ─────────────────────────────────────────────────
-  const statePages: MetadataRoute.Sitemap = SEED_STATES.map((state) => ({
-    url: `${BASE_URL}/locations/${state.slug}`,
+  // 3. Dynamic 36 Nigerian States + FCT
+  const states = await getStates();
+  const statePages: MetadataRoute.Sitemap = states.map((state) => ({
+    url: `${BASE_URL}/jobs?state=${state.slug}`,
     lastModified: now,
     changeFrequency: 'weekly' as const,
     priority: 0.6,
   }));
 
-  // ── Category pages ─────────────────────────────────────────────────────────
-  const categoryPages: MetadataRoute.Sitemap = SEED_CATEGORIES.map((cat) => ({
-    url: `${BASE_URL}/categories/${cat.slug}`,
+  // 4. Dynamic Categories
+  const categories = await getCategories();
+  const categoryPages: MetadataRoute.Sitemap = categories.map((cat) => ({
+    url: `${BASE_URL}/jobs?category=${cat.slug}`,
     lastModified: now,
     changeFrequency: 'daily' as const,
     priority: 0.65,
   }));
 
-  // ── Blog post pages ────────────────────────────────────────────────────────
-  // BlogPost uses a `date` string field, not published_at / updated_at
+  // 5. Blog Posts
   const blogPages: MetadataRoute.Sitemap = BLOG_POSTS.map((post) => ({
     url: `${BASE_URL}/blog/${post.slug}`,
     lastModified: now,
-    changeFrequency: 'monthly' as const,
-    priority: 0.6,
+    changeFrequency: 'weekly' as const,
+    priority: 0.7,
   }));
 
-  return [
-    ...staticPages,
-    ...jobPages,
-    ...statePages,
-    ...categoryPages,
-    ...blogPages,
-  ];
+  return [...staticPages, ...jobPages, ...statePages, ...categoryPages, ...blogPages];
 }

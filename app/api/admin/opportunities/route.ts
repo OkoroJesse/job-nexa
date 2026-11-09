@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getAdminSession, recordAdminAuditLog } from '@/lib/admin-auth';
 import { createAdminClient } from '@/lib/supabase/admin';
-import { SEED_OPPORTUNITIES } from '@/lib/mock-data';
 
 export async function GET(req: NextRequest) {
   try {
@@ -42,22 +41,13 @@ export async function GET(req: NextRequest) {
       }
 
       const { data, error } = await query;
-      if (!error && data) {
-        return NextResponse.json({ opportunities: data });
+      if (error) {
+        return NextResponse.json({ error: error.message }, { status: 500 });
       }
+      return NextResponse.json({ opportunities: data || [] });
     }
 
-    // High-fidelity fallback
-    let results = [...SEED_OPPORTUNITIES];
-    if (type) {
-      results = results.filter((o) => o.opportunity_type === type);
-    }
-    if (search) {
-      const q = search.toLowerCase();
-      results = results.filter((o) => o.title.toLowerCase().includes(q) || o.organization_name.toLowerCase().includes(q));
-    }
-
-    return NextResponse.json({ opportunities: results });
+    return NextResponse.json({ opportunities: [] });
   } catch (error) {
     console.error('Error fetching admin opportunities:', error);
     return NextResponse.json({ error: 'Failed to fetch opportunities' }, { status: 500 });

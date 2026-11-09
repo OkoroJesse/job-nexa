@@ -1,17 +1,44 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { SEED_CATEGORIES, SEED_STATES } from '@/lib/mock-data';
-import { Briefcase, ArrowLeft, Save, Lock, ShieldCheck, Sparkles } from 'lucide-react';
+import { Briefcase, ArrowLeft, Save, Lock, ShieldCheck, Sparkles, Loader2 } from 'lucide-react';
+
+interface TaxonomyCategory {
+  id: string;
+  name: string;
+}
+
+interface TaxonomyState {
+  id: string;
+  name: string;
+}
 
 export default function NewOpportunityPage() {
   const router = useRouter();
+  const [categories, setCategories] = useState<TaxonomyCategory[]>([]);
+  const [states, setStates] = useState<TaxonomyState[]>([]);
   const [title, setTitle] = useState('');
   const [organization, setOrganization] = useState('');
-  const [categoryId, setCategoryId] = useState(SEED_CATEGORIES[0]?.id || 'cat-1');
-  const [stateId, setStateId] = useState(SEED_STATES[0]?.id || 'state-1');
+  const [categoryId, setCategoryId] = useState('');
+  const [stateId, setStateId] = useState('');
+
+  useEffect(() => {
+    fetch('/api/taxonomies')
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.categories?.length) {
+          setCategories(data.categories);
+          setCategoryId(data.categories[0].id);
+        }
+        if (data.states?.length) {
+          setStates(data.states);
+          setStateId(data.states[0].id);
+        }
+      })
+      .catch((err) => console.error('Error fetching taxonomies:', err));
+  }, []);
   const [city, setCity] = useState('');
   const [type, setType] = useState('full_time');
   const [policy, setPolicy] = useState('on_site');
@@ -136,7 +163,7 @@ export default function NewOpportunityPage() {
                 onChange={(e) => setCategoryId(e.target.value)}
                 className="w-full px-3 py-2 text-xs text-surface-900 border border-surface-200 rounded-xl focus:outline-none focus:ring-1 focus:ring-primary"
               >
-                {SEED_CATEGORIES.map((cat) => (
+                {categories.map((cat) => (
                   <option key={cat.id} value={cat.id}>{cat.name}</option>
                 ))}
               </select>
@@ -149,7 +176,7 @@ export default function NewOpportunityPage() {
                 onChange={(e) => setStateId(e.target.value)}
                 className="w-full px-3 py-2 text-xs text-surface-900 border border-surface-200 rounded-xl focus:outline-none focus:ring-1 focus:ring-primary"
               >
-                {SEED_STATES.map((st) => (
+                {states.map((st) => (
                   <option key={st.id} value={st.id}>{st.name}</option>
                 ))}
               </select>

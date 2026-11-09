@@ -1,67 +1,74 @@
 'use client';
 
-import React, { useState } from 'react';
-import { Bell, Send, CheckCircle2, AlertCircle, Info, Sparkles } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Bell, Send, CheckCircle2, AlertCircle, Info, Sparkles, Loader2 } from 'lucide-react';
 
 interface NotificationItem {
   id: string;
   title: string;
   message: string;
   type: string;
-  target: string;
-  sentAt: string;
+  user_id: string | null;
+  created_at: string;
 }
 
-const INITIAL_NOTIFICATIONS: NotificationItem[] = [
-  {
-    id: 'notif-1',
-    title: 'New Graduate Trainee Cycle: Access Bank 2027',
-    message: 'Access Bank has officially opened applications for 2027 operations trainees. Check the directory now.',
-    type: 'job_alert',
-    target: 'All Registered Candidates',
-    sentAt: '08 Nov 2026, 09:00 WAT',
-  },
-  {
-    id: 'notif-2',
-    title: 'PTDF Overseas Postgraduate Scholarship Reminder',
-    message: 'The Federal Government PTDF scholarship deadline is approaching. Ensure your NIN and transcripts are ready.',
-    type: 'info',
-    target: 'All Registered Candidates',
-    sentAt: '05 Nov 2026, 14:30 WAT',
-  },
-  {
-    id: 'notif-3',
-    title: 'Zenith Bank Transfer Verification Desk Live',
-    message: 'Direct bank transfer receipts are audited within 2-4 hours during business days.',
-    type: 'system',
-    target: 'All Registered Candidates',
-    sentAt: '01 Nov 2026, 08:00 WAT',
-  },
-];
-
 export default function AdminNotificationsPage() {
-  const [notifications, setNotifications] = useState<NotificationItem[]>(INITIAL_NOTIFICATIONS);
+  const [notifications, setNotifications] = useState<NotificationItem[]>([]);
+  const [loading, setLoading] = useState(true);
   const [title, setTitle] = useState('');
   const [message, setMessage] = useState('');
   const [type, setType] = useState('job_alert');
+  const [sending, setSending] = useState(false);
 
-  const handleBroadcast = (e: React.FormEvent) => {
+  useEffect(() => {
+    fetchNotifications();
+  }, []);
+
+  const fetchNotifications = async () => {
+    setLoading(true);
+    try {
+      const res = await fetch('/api/admin/notifications');
+      const data = await res.json();
+      if (res.ok && data.notifications) {
+        setNotifications(data.notifications);
+      }
+    } catch (e) {
+      console.warn('Error fetching notifications:', e);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleBroadcast = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!title || !message) return;
+    if (!title.trim() || !message.trim()) return;
 
-    const newNotif: NotificationItem = {
-      id: `notif-${Date.now()}`,
-      title,
-      message,
-      type,
-      target: 'All Registered Candidates',
-      sentAt: 'Just now',
-    };
+    setSending(true);
+    try {
+      const res = await fetch('/api/admin/notifications', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: title.trim(),
+          message: message.trim(),
+          type,
+        }),
+      });
 
-    setNotifications([newNotif, ...notifications]);
-    setTitle('');
-    setMessage('');
-    alert('Broadcast notification sent to all candidate accounts!');
+      const data = await res.json();
+      if (res.ok && data.notification) {
+        setNotifications((prev) => [data.notification, ...prev]);
+        setTitle('');
+        setMessage('');
+        alert('Broadcast notification dispatched to all candidate accounts!');
+      } else {
+        alert(data.error || 'Failed to dispatch notification');
+      }
+    } catch {
+      alert('Error sending broadcast');
+    } finally {
+      setSending(false);
+    }
   };
 
   return (
@@ -124,10 +131,11 @@ export default function AdminNotificationsPage() {
 
             <button
               type="submit"
-              className="w-full py-2.5 rounded-xl text-xs font-bold bg-primary hover:bg-primary-hover text-white transition shadow-sm flex items-center justify-center gap-2"
+              disabled={sending}
+              className="w-full py-2.5 rounded-xl text-xs font-bold bg-primary hover:bg-primary-hover text-white transition shadow-sm flex items-center justify-center gap-2 disabled:opacity-50"
             >
               <Send className="w-3.5 h-3.5" />
-              <span>Send Broadcast to Users</span>
+              <span>{sending ? 'Dispatching...' : 'Send Broadcast to Users'}</span>
             </button>
           </form>
         </div>
@@ -141,23 +149,38 @@ export default function AdminNotificationsPage() {
             <span className="text-surface-500 font-semibold">In-App Delivery</span>
           </div>
 
-          <div className="divide-y divide-surface-100">
-            {notifications.map((item) => (
-              <div key={item.id} className="p-4 space-y-1 text-xs">
-                <div className="flex items-center justify-between gap-2">
-                  <span className="font-bold text-surface-900 text-sm">{item.title}</span>
-                  <span className="text-[11px] text-surface-400">{item.sentAt}</span>
+          {loading ? (
+            <div className="p-12 text-center text-surface-400 flex flex-col items-center gap-3">
+              <Loader2 className="w-6 h-6 animate-spin text-primary" />
+              <p className="text-xs">Loading broadcasts...</p>
+            </div>
+          ) : notifications.length === 0 ? (
+            <div className="p-12 text-center space-y-3">
+              <Bell className="w-10 h-10 text-surface-300 mx-auto" />
+              <div className="text-sm font-bold text-surface-900">No broadcasts sent yet</div>
+              <p className="text-xs text-surface-500 max-w-sm mx-auto">
+                Use the form on the left to send notifications to registered candidate dashboards.
+              </p>
+            </div>
+          ) : (
+            <div className="divide-y divide-surface-100">
+              {notifications.map((item) => (
+                <div key={item.id} className="p-4 space-y-1 text-xs">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="font-bold text-surface-900 text-sm">{item.title}</span>
+                    <span className="text-[11px] text-surface-400">{new Date(item.created_at).toLocaleString('en-GB')}</span>
+                  </div>
+                  <p className="text-surface-600 leading-relaxed">{item.message}</p>
+                  <div className="flex items-center gap-2 pt-1 text-[11px] text-surface-400">
+                    <span className="px-2 py-0.5 rounded bg-surface-100 text-surface-600 font-medium uppercase">
+                      {item.type}
+                    </span>
+                    <span>• Target: All Registered Candidates</span>
+                  </div>
                 </div>
-                <p className="text-surface-600 leading-relaxed">{item.message}</p>
-                <div className="flex items-center gap-2 pt-1 text-[11px] text-surface-400">
-                  <span className="px-2 py-0.5 rounded bg-surface-100 text-surface-600 font-medium uppercase">
-                    {item.type}
-                  </span>
-                  <span>• Target: {item.target}</span>
-                </div>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          )}
         </div>
       </div>
     </div>

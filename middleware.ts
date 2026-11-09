@@ -10,11 +10,10 @@ export async function middleware(req: NextRequest) {
       process.env.NEXT_PUBLIC_SUPABASE_URL &&
       !process.env.NEXT_PUBLIC_SUPABASE_URL.includes('placeholder.supabase.co');
 
-    // In demo/development mode (no Supabase configured), allow admin access
-    // but log a warning. In production this MUST have Supabase configured.
     if (!isConfigured) {
-      console.warn('[SECURITY] Admin route accessed in demo mode — Supabase not configured. Configure NEXT_PUBLIC_SUPABASE_URL to enforce authentication.');
-      return NextResponse.next();
+      const loginUrl = new URL('/login', req.url);
+      loginUrl.searchParams.set('redirect', pathname);
+      return NextResponse.redirect(loginUrl);
     }
 
     const res = NextResponse.next();
@@ -68,7 +67,9 @@ export async function middleware(req: NextRequest) {
       !process.env.NEXT_PUBLIC_SUPABASE_URL.includes('placeholder.supabase.co');
 
     if (!isConfigured) {
-      return NextResponse.next();
+      const loginUrl = new URL('/login', req.url);
+      loginUrl.searchParams.set('redirect', pathname);
+      return NextResponse.redirect(loginUrl);
     }
 
     const res = NextResponse.next();

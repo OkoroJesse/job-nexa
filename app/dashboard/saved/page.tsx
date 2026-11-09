@@ -1,18 +1,55 @@
 'use client';
 
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useAuth } from '@/components/providers/AuthProvider';
-import { SEED_OPPORTUNITIES } from '@/lib/mock-data';
+import { createClient } from '@/lib/supabase/client';
 import JobCard from '@/components/jobs/JobCard';
 import { Bookmark, ArrowLeft } from 'lucide-react';
+import { PublicOpportunity } from '@/types/database';
 
 export default function SavedJobsPage() {
-  const { savedJobIds } = useAuth();
+  const { user, savedJobIds, isLoading: authLoading } = useAuth();
+  const [savedOpportunities, setSavedOpportunities] = useState<PublicOpportunity[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  const savedOpportunities = SEED_OPPORTUNITIES.filter((opp) =>
-    savedJobIds.includes(opp.id)
-  );
+  useEffect(() => {
+    async function loadSaved() {
+      if (!user) {
+        setLoading(false);
+        return;
+      }
+      try {
+        const supabase = createClient();
+        const { data, error } = await supabase
+          .from('saved_opportunities')
+          .select(`
+            opportunity_id,
+            opportunity:opportunities(
+              id, title, slug, organization_name, organization_logo_url,
+              category_id, state_id, city, workplace_policy, opportunity_type,
+              salary_or_stipend_range, description, application_deadline,
+              is_locked, is_featured, created_at,
+              category:categories(id, name, slug, icon_name),
+              state:locations_states(id, name, slug, geopolitical_zone)
+            )
+          `)
+          .eq('user_id', user.id);
+
+        if (!error && data) {
+          const list = data
+            .map((item: any) => item.opportunity)
+            .filter(Boolean) as PublicOpportunity[];
+          setSavedOpportunities(list);
+        }
+      } catch (err) {
+        console.warn('Error loading saved opportunities:', err);
+      } finally {
+        setLoading(false);
+      }
+    }
+    loadSaved();
+  }, [user, savedJobIds]);
 
   return (
     <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-10 space-y-8">
@@ -34,7 +71,11 @@ export default function SavedJobsPage() {
         </p>
       </div>
 
-      {savedOpportunities.length > 0 ? (
+      {loading || authLoading ? (
+        <div className="bg-white p-12 rounded-3xl border border-surface-200 text-center">
+          <p className="text-xs text-surface-500">Loading your saved opportunities...</p>
+        </div>
+      ) : savedOpportunities.length > 0 ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {savedOpportunities.map((opp) => (
             <JobCard key={opp.id} opportunity={opp} />
@@ -51,9 +92,9 @@ export default function SavedJobsPage() {
           </p>
           <Link
             href="/jobs"
-            className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-xs font-bold bg-primary text-white"
+            className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-xs font-bold bg-primary hover:bg-primary-hover text-white transition shadow-sm mt-2"
           >
-            Browse Opportunities
+            <span>Explore Opportunities</span>
           </Link>
         </div>
       )}

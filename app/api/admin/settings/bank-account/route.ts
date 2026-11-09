@@ -131,11 +131,10 @@ export async function PATCH(req: NextRequest) {
       !process.env.NEXT_PUBLIC_SUPABASE_URL.includes('placeholder.supabase.co');
 
     if (!isConfigured) {
-      return NextResponse.json({
-        success: true,
-        message: 'Demo mode: Settings saved locally (configure Supabase to persist)',
-        demo_mode: true,
-      });
+      return NextResponse.json(
+        { error: 'Database service not configured' },
+        { status: 503 }
+      );
     }
 
     const adminClient = createAdminClient();

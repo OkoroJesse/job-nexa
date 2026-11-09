@@ -23,51 +23,14 @@ export async function GET(req: NextRequest) {
         `)
         .order('created_at', { ascending: false });
 
-      if (!error && users) {
-        return NextResponse.json({ users });
+      if (error) {
+        return NextResponse.json({ error: error.message }, { status: 500 });
       }
+
+      return NextResponse.json({ users: users || [] });
     }
 
-    // High-fidelity seed users for demo/testing
-    const mockUsers = [
-      {
-        id: 'u-1',
-        email: 'chidinma.pro@jobnexa.ng',
-        full_name: 'Chidinma Okafor',
-        phone_number: '+234 803 123 4567',
-        role: 'job_seeker',
-        created_at: '2026-10-12T10:00:00Z',
-        subscription: [
-          {
-            id: 'sub-1',
-            status: 'active',
-            plan_name: '30-Day All-Access Pass',
-            activated_at: '2026-11-01T08:00:00Z',
-            expires_at: '2026-12-01T08:00:00Z',
-          }
-        ]
-      },
-      {
-        id: 'u-2',
-        email: 'tunde.graduate@jobnexa.ng',
-        full_name: 'Tunde Adeleke',
-        phone_number: '+234 818 999 0011',
-        role: 'job_seeker',
-        created_at: '2026-11-04T12:00:00Z',
-        subscription: []
-      },
-      {
-        id: 'u-3',
-        email: 'ibrahim.finance@jobnexa.ng',
-        full_name: 'Mallam Ibrahim',
-        phone_number: '+234 802 444 1122',
-        role: 'finance_auditor',
-        created_at: '2026-09-01T09:00:00Z',
-        subscription: []
-      }
-    ];
-
-    return NextResponse.json({ users: mockUsers });
+    return NextResponse.json({ users: [] });
   } catch (error) {
     return NextResponse.json({ error: 'Failed to fetch users' }, { status: 500 });
   }
