@@ -21,34 +21,145 @@ function getServiceClient(): any {
   return createClient(url, key) as any;
 }
 
-/** Resolve the state_id from a human-readable state name */
-async function resolveStateId(
-  supabase: any,
-  stateName: string | null | undefined,
-): Promise<string | null> {
-  if (!stateName) return null;
-  const { data } = await supabase
-    .from('location_states')
-    .select('id')
-    .ilike('name', `%${stateName.trim()}%`)
-    .limit(1)
-    .single();
-  return (data as any)?.id ?? null;
+const NIGERIAN_STATE_KEYWORDS: Record<string, string[]> = {
+  'Federal Capital Territory (Abuja)': ['abuja', 'fct', 'federal capital'],
+  'Lagos': ['lagos', 'ikeja', 'lekki', 'victoria island', 'yaba'],
+  'Rivers': ['rivers', 'port harcourt'],
+  'Oyo': ['oyo', 'ibadan'],
+  'Ogun': ['ogun', 'abeokuta', 'ota'],
+  'Kano': ['kano'],
+  'Kaduna': ['kaduna'],
+  'Anambra': ['anambra', 'awka', 'onitsha'],
+  'Enugu': ['enugu', 'nsukka'],
+  'Delta': ['delta', 'warri', 'asaba'],
+  'Edo': ['edo', 'benin city', 'benin'],
+  'Akwa Ibom': ['akwa ibom', 'uyo'],
+  'Cross River': ['cross river', 'calabar'],
+  'Imo': ['imo', 'owerri'],
+  'Abia': ['abia', 'umuahia', 'aba'],
+  'Plateau': ['plateau', 'jos'],
+  'Kwara': ['kwara', 'ilorin'],
+  'Benue': ['benue', 'makurdi'],
+  'Ondo': ['ondo', 'akure'],
+  'Osun': ['osun', 'osogbo'],
+  'Ekiti': ['ekiti', 'ado-ekiti', 'ado ekiti'],
+  'Bauchi': ['bauchi'],
+  'Gombe': ['gombe'],
+  'Taraba': ['taraba', 'jalingo'],
+  'Katsina': ['katsina'],
+  'Bayelsa': ['bayelsa', 'yenagoa'],
+  'Borno': ['borno', 'maiduguri'],
+  'Adamawa': ['adamawa', 'yola'],
+  'Niger': ['niger', 'minna'],
+  'Nasarawa': ['nasarawa', 'lafia'],
+  'Kogi': ['kogi', 'lokoja'],
+  'Sokoto': ['sokoto'],
+  'Kebbi': ['kebbi', 'birnin kebbi'],
+  'Zamfara': ['zamfara', 'gusau'],
+  'Jigawa': ['jigawa', 'dutse'],
+  'Yobe': ['yobe', 'damaturu'],
+  'Ebonyi': ['ebonyi', 'abakaliki'],
+};
+
+let cachedStatesMap: Map<string, string> | null = null;
+let cachedCategoriesList: Array<{ id: string; name: string; slug: string }> | null = null;
+
+async function getCachedStates(supabase: any): Promise<Map<string, string>> {
+  if (cachedStatesMap) return cachedStatesMap;
+  const { data } = await supabase.from('locations_states').select('id, name');
+  cachedStatesMap = new Map();
+  if (data) {
+    for (const s of data) {
+      cachedStatesMap.set(s.name, s.id);
+    }
+  }
+  return cachedStatesMap;
 }
 
-/** Resolve the default category id for a source, with fallback to any existing category */
-async function resolveDefaultCategoryId(
+async function getCachedCategories(supabase: any): Promise<Array<{ id: string; name: string; slug: string }>> {
+  if (cachedCategoriesList) return cachedCategoriesList;
+  const { data } = await supabase.from('categories').select('id, name, slug');
+  cachedCategoriesList = (data as Array<{ id: string; name: string; slug: string }>) || [];
+  return cachedCategoriesList;
+}
+
+/** Resolve state_id intelligently from title, city, and state_name */
+async function resolveStateId(
   supabase: any,
-  sourceCategoryId: string | null,
+  job: NormalizedJob,
+): Promise<{ stateId: string | null; workplacePolicy: string }> {
+  const statesMap = await getCachedStates(supabase);
+  const locationHaystack = `${job.title} ${job.city || ''} ${job.state_name || ''}`.toLowerCase();
+
+  for (const [stateName, keywords] of Object.entries(NIGERIAN_STATE_KEYWORDS)) {
+    if (keywords.some((kw) => locationHaystack.includes(kw))) {
+      const stateId = statesMap.get(stateName) ?? null;
+      const isRemote = locationHaystack.includes('remote') || locationHaystack.includes('home based');
+      return {
+        stateId,
+        workplacePolicy: isRemote ? 'remote_nigeria' : 'on_site',
+      };
+    }
+  }
+
+  // Not tied to a specific state: check remote status
+  const isGlobalRemote =
+    locationHaystack.includes('emea') ||
+    locationHaystack.includes('worldwide') ||
+    locationHaystack.includes('global') ||
+    locationHaystack.includes('remote') ||
+    locationHaystack.includes('home based');
+
+  if (isGlobalRemote) {
+    const isExplicitlyNigeria = locationHaystack.includes('nigeria') || locationHaystack.includes('lagos');
+    return {
+      stateId: null,
+      workplacePolicy: isExplicitlyNigeria ? 'remote_nigeria' : 'remote_global',
+    };
+  }
+
+  return { stateId: null, workplacePolicy: 'on_site' };
+}
+
+/** Resolve category dynamically based on keywords */
+async function resolveJobCategory(
+  supabase: any,
+  job: NormalizedJob,
+  fallbackCategoryId: string | null,
 ): Promise<string | null> {
-  if (sourceCategoryId) return sourceCategoryId;
-  const { data } = await supabase
-    .from('categories')
-    .select('id')
-    .order('sort_order', { ascending: true })
-    .limit(1)
-    .single();
-  return (data as any)?.id ?? null;
+  const categories = await getCachedCategories(supabase);
+  const catBySlug = new Map(categories.map((c) => [c.slug, c.id]));
+  const text = `${job.title} ${job.description || ''} ${job.opportunity_type}`.toLowerCase();
+
+  if (job.opportunity_type === 'scholarship' || text.includes('scholarship') || text.includes('fellowship') || text.includes('fellows program')) {
+    if (catBySlug.has('scholarships-fellowships')) return catBySlug.get('scholarships-fellowships')!;
+  }
+  if (job.opportunity_type === 'grant' || text.includes('grant') || text.includes('funding') || text.includes('hackathon') || text.includes('prize') || text.includes('award')) {
+    if (catBySlug.has('grants-sme-funding')) return catBySlug.get('grants-sme-funding')!;
+  }
+  if (job.opportunity_type === 'graduate_trainee' || text.includes('graduate trainee') || text.includes('grad trainee') || text.includes('trainee')) {
+    if (catBySlug.has('graduate-trainee')) return catBySlug.get('graduate-trainee')!;
+  }
+  if (job.opportunity_type === 'nysc_ppa' || text.includes('nysc') || text.includes('corps member')) {
+    if (catBySlug.has('nysc-ppa')) return catBySlug.get('nysc-ppa')!;
+  }
+  if (text.includes('software') || text.includes('developer') || text.includes('engineer') || text.includes('data') || text.includes('linux') || text.includes('cloud') || text.includes('devops') || text.includes('frontend') || text.includes('backend') || text.includes('qa ') || text.includes('python') || text.includes('golang') || text.includes('product manager')) {
+    if (catBySlug.has('tech-software-data')) return catBySlug.get('tech-software-data')!;
+  }
+  if (text.includes('bank') || text.includes('finance') || text.includes('accountant') || text.includes('credit') || text.includes('risk') || text.includes('relationship manager') || text.includes('collections') || text.includes('sales') || text.includes('business development') || text.includes('audit')) {
+    if (catBySlug.has('corporate-banking')) return catBySlug.get('corporate-banking')!;
+  }
+  if (text.includes('health') || text.includes('medical') || text.includes('nurse') || text.includes('doctor') || text.includes('clinical') || text.includes('pharma')) {
+    if (catBySlug.has('healthcare')) return catBySlug.get('healthcare')!;
+  }
+  if (text.includes('ngo') || text.includes('humanitarian') || text.includes('foundation') || text.includes('non-profit') || text.includes('wikimedia') || text.includes('development')) {
+    if (catBySlug.has('ngo-development')) return catBySlug.get('ngo-development')!;
+  }
+  if (text.includes('remote') || text.includes('home based') || text.includes('worldwide')) {
+    if (catBySlug.has('remote-jobs')) return catBySlug.get('remote-jobs')!;
+  }
+
+  return fallbackCategoryId ?? catBySlug.get('tech-software-data') ?? categories[0]?.id ?? null;
 }
 
 /** Check whether a dedup hash already exists in the DB */
@@ -70,10 +181,11 @@ async function normalizedJobToRow(
   supabase: any,
   job: NormalizedJob,
   sourceId: string,
-  categoryId: string | null,
+  defaultCategoryId: string | null,
   autoPublish: boolean,
 ): Promise<Record<string, unknown>> {
-  const stateId = await resolveStateId(supabase, job.state_name);
+  const { stateId, workplacePolicy } = await resolveStateId(supabase, job);
+  const categoryId = await resolveJobCategory(supabase, job, defaultCategoryId);
   const hash = computeDedupHash(job.title, job.organization_name, job.application_url);
 
   // Slug: title-org-randomhex
@@ -85,13 +197,6 @@ async function normalizedJobToRow(
   const slug = `${slugBase}-${hash.slice(0, 6)}`;
 
   const opportunityType = job.opportunity_type as string;
-  const workplacePolicy = (() => {
-    const city = (job.city ?? '').toLowerCase();
-    const loc = (job.state_name ?? '').toLowerCase();
-    if (city.includes('remote') || loc.includes('remote')) return 'remote_global';
-    if (!stateId && !city) return 'remote_nigeria';
-    return 'on_site';
-  })();
 
   return {
     title: job.title,
@@ -135,7 +240,7 @@ export async function runSourceImport(
   adminId?: string | null,
 ): Promise<ImportResult> {
   const supabase = getServiceClient();
-  const categoryId = await resolveDefaultCategoryId(supabase, source.default_category_id ?? null);
+  const defaultCategoryId = source.default_category_id ?? null;
 
   // 1. Create a running log entry
   const { data: logRow, error: logErr } = await supabase
@@ -253,7 +358,7 @@ export async function runSourceImport(
         continue;
       }
 
-      const row = await normalizedJobToRow(supabase, job, source.id, categoryId, source.auto_publish);
+      const row = await normalizedJobToRow(supabase, job, source.id, defaultCategoryId, source.auto_publish);
       const { error: insertErr } = await supabase.from('opportunities').insert(row);
 
       if (insertErr) {

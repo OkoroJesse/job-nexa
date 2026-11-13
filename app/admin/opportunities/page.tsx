@@ -37,6 +37,7 @@ export default function AdminOpportunitiesPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [typeFilter, setTypeFilter] = useState('all');
+  const [statusFilter, setStatusFilter] = useState('all');
   const [actionLoading, setActionLoading] = useState<string | null>(null);
 
   useEffect(() => {
@@ -58,6 +59,32 @@ export default function AdminOpportunitiesPage() {
       setError('Network error while loading opportunities');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const togglePublish = async (id: string, currentStatus: string) => {
+    setActionLoading(id);
+    const newStatus = currentStatus === 'published' ? 'draft' : 'published';
+    try {
+      const res = await fetch(`/api/admin/opportunities/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          status: newStatus,
+          ...(newStatus === 'published' ? { published_at: new Date().toISOString() } : {}),
+        }),
+      });
+      if (res.ok) {
+        setOpportunities((prev) =>
+          prev.map((o) => (o.id === id ? { ...o, status: newStatus } : o))
+        );
+      } else {
+        alert('Failed to update publication status');
+      }
+    } catch {
+      alert('Error updating publication status');
+    } finally {
+      setActionLoading(null);
     }
   };
 
@@ -128,6 +155,7 @@ export default function AdminOpportunitiesPage() {
 
   const filteredOpportunities = opportunities.filter((opp) => {
     if (typeFilter !== 'all' && opp.opportunity_type !== typeFilter) return false;
+    if (statusFilter !== 'all' && opp.status !== statusFilter) return false;
     return true;
   });
 
@@ -162,28 +190,45 @@ export default function AdminOpportunitiesPage() {
 
       {/* Filter Ribbon */}
       <div className="bg-white p-4 rounded-2xl border border-surface-200 shadow-sm flex flex-wrap items-center justify-between gap-3 text-xs">
-        <div className="flex items-center gap-3">
-          <span className="font-bold text-surface-700 flex items-center gap-1.5">
-            <Filter className="w-3.5 h-3.5 text-primary" />
-            <span>Vertical:</span>
-          </span>
-          <select
-            value={typeFilter}
-            onChange={(e) => setTypeFilter(e.target.value)}
-            className="px-2.5 py-1 text-xs text-surface-800 bg-surface-50 border border-surface-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-primary"
-          >
-            <option value="all">All Opportunity Types</option>
-            <option value="full_time">Full-time Roles</option>
-            <option value="nysc_ppa">NYSC PPAs</option>
-            <option value="graduate_trainee">Graduate Trainees</option>
-            <option value="scholarship">Academic Scholarships</option>
-            <option value="grant">SME Grants & Funding</option>
-            <option value="internship">Internships</option>
-          </select>
+        <div className="flex flex-wrap items-center gap-4">
+          <div className="flex items-center gap-2">
+            <span className="font-bold text-surface-700 flex items-center gap-1.5">
+              <Filter className="w-3.5 h-3.5 text-primary" />
+              <span>Status:</span>
+            </span>
+            <select
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value)}
+              className="px-2.5 py-1 text-xs text-surface-800 bg-surface-50 border border-surface-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-primary font-semibold"
+            >
+              <option value="all">All Statuses</option>
+              <option value="published">🟢 Published Live</option>
+              <option value="pending_review">🟡 Pending Review</option>
+              <option value="draft">⚪ Drafts</option>
+              <option value="archived">🔴 Archived</option>
+            </select>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <span className="font-bold text-surface-700">Vertical:</span>
+            <select
+              value={typeFilter}
+              onChange={(e) => setTypeFilter(e.target.value)}
+              className="px-2.5 py-1 text-xs text-surface-800 bg-surface-50 border border-surface-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-primary"
+            >
+              <option value="all">All Opportunity Types</option>
+              <option value="full_time">Full-time Roles</option>
+              <option value="nysc_ppa">NYSC PPAs</option>
+              <option value="graduate_trainee">Graduate Trainees</option>
+              <option value="scholarship">Academic Scholarships</option>
+              <option value="grant">SME Grants & Funding</option>
+              <option value="internship">Internships</option>
+            </select>
+          </div>
         </div>
 
         <span className="text-surface-500">
-          Showing <strong>{filteredOpportunities.length}</strong> listings
+          Showing <strong>{filteredOpportunities.length}</strong> of <strong>{opportunities.length}</strong> listings
         </span>
       </div>
 
@@ -225,17 +270,33 @@ export default function AdminOpportunitiesPage() {
                 <div className="space-y-1">
                   <div className="flex flex-wrap items-center gap-2">
                     <span className="font-bold text-sm text-surface-900">{opp.title}</span>
+                    
+                    {/* Status Badge */}
+                    {opp.status === 'published' ? (
+                      <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-50 text-emerald-800 border border-emerald-200">
+                        ● Published Live
+                      </span>
+                    ) : opp.status === 'pending_review' ? (
+                      <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-50 text-amber-800 border border-amber-200">
+                        ⏳ Pending Review
+                      </span>
+                    ) : (
+                      <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-surface-100 text-surface-600 border border-surface-200">
+                        Draft / {opp.status}
+                      </span>
+                    )}
+
                     {opp.is_featured && (
                       <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-50 text-amber-800 border border-amber-200">
                         ★ Featured
                       </span>
                     )}
                     {opp.is_locked ? (
-                      <span className="px-2 py-0.5 rounded text-[10px] font-medium bg-surface-100 text-surface-700">
+                      <span className="px-2 py-0.5 rounded text-[10px] font-medium bg-purple-50 text-purple-700 border border-purple-200">
                         Locked (₦3,500 Pass)
                       </span>
                     ) : (
-                      <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-50 text-emerald-800">
+                      <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-sky-50 text-sky-800 border border-sky-200">
                         Public Free Apply
                       </span>
                     )}
@@ -253,6 +314,21 @@ export default function AdminOpportunitiesPage() {
                 </div>
 
                 <div className="flex flex-wrap items-center gap-2 shrink-0">
+                  {/* Publish / Unpublish Toggle */}
+                  <button
+                    onClick={() => togglePublish(opp.id, opp.status)}
+                    disabled={actionLoading === opp.id}
+                    className={`px-3 py-1.5 rounded-lg border text-xs font-bold flex items-center gap-1 transition ${
+                      opp.status === 'published'
+                        ? 'border-emerald-300 bg-emerald-50 text-emerald-800 hover:bg-emerald-100'
+                        : 'border-surface-200 hover:bg-primary hover:text-white bg-white text-surface-700'
+                    }`}
+                    title={opp.status === 'published' ? 'Click to unpublish' : 'Click to publish live'}
+                  >
+                    <CheckCircle2 className="w-3.5 h-3.5" />
+                    <span>{opp.status === 'published' ? 'Live (Unpublish)' : 'Publish Live'}</span>
+                  </button>
+
                   <button
                     onClick={() => toggleFeatured(opp.id, opp.is_featured)}
                     disabled={actionLoading === opp.id}
@@ -271,9 +347,9 @@ export default function AdminOpportunitiesPage() {
                     onClick={() => toggleLocked(opp.id, opp.is_locked)}
                     disabled={actionLoading === opp.id}
                     className="px-2.5 py-1.5 rounded-lg border border-surface-200 hover:bg-surface-50 text-surface-600 text-xs font-medium"
-                    title="Toggle Paywall Gating"
+                    title="Toggle Paywall Gating (Separate from Public Visibility)"
                   >
-                    {opp.is_locked ? 'Set to Public Free' : 'Lock behind ₦3,500'}
+                    {opp.is_locked ? 'Lock: Pass' : 'Lock: Free'}
                   </button>
 
                   <Link

@@ -3,6 +3,7 @@ import { notFound } from 'next/navigation';
 import Link from 'next/link';
 import { getOpportunityBySlug } from '@/lib/opportunities';
 import { getServerAuthSession } from '@/lib/auth-helpers';
+import { getAdminSession } from '@/lib/admin-auth';
 import LockedPaywallCard from '@/components/jobs/LockedPaywallCard';
 import UnlockedContactCard from '@/components/jobs/UnlockedContactCard';
 import { UnlockedOpportunity } from '@/types/database';
@@ -28,10 +29,17 @@ interface JobDetailPageProps {
 
 export default async function JobDetailPage({ params }: JobDetailPageProps) {
   // Check active membership status strictly from verified server session in Supabase database
-  const { isActiveMember: hasActiveAccess } = await getServerAuthSession();
+  const [{ isActiveMember: hasActiveAccess }, adminSession] = await Promise.all([
+    getServerAuthSession(),
+    getAdminSession(),
+  ]);
 
-  // Retrieve opportunity data with strict server-level masking
-  const { opportunity, isUnlocked } = await getOpportunityBySlug(params.slug, hasActiveAccess);
+  // Retrieve opportunity data with strict server-level masking (admins can preview unpublished drafts)
+  const { opportunity, isUnlocked } = await getOpportunityBySlug(
+    params.slug,
+    hasActiveAccess || adminSession.isAdmin,
+    adminSession.isAdmin
+  );
 
   if (!opportunity) {
     notFound();

@@ -107,6 +107,7 @@ export default function EditOpportunityPage({ params }: { params: { id: string }
           application_url: applicationUrl,
           application_instructions: instructions,
           status,
+          ...(status === 'published' ? { published_at: new Date().toISOString() } : {}),
           is_featured: isFeatured,
         }),
       });
@@ -199,7 +200,21 @@ export default function EditOpportunityPage({ params }: { params: { id: string }
             </div>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
+            <div>
+              <label className="block text-xs font-semibold text-surface-700 mb-1">Publication Status</label>
+              <select
+                value={status}
+                onChange={(e) => setStatus(e.target.value)}
+                className="w-full px-3 py-2 text-xs text-surface-900 font-bold border border-surface-200 rounded-xl focus:outline-none focus:ring-1 focus:ring-primary bg-surface-50"
+              >
+                <option value="published">🟢 Published (Live)</option>
+                <option value="pending_review">🟡 Pending Review</option>
+                <option value="draft">⚪ Draft (Hidden)</option>
+                <option value="archived">🔴 Archived</option>
+              </select>
+            </div>
+
             <div>
               <label className="block text-xs font-semibold text-surface-700 mb-1">Category</label>
               <select

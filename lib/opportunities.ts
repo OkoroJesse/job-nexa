@@ -90,21 +90,26 @@ export async function getOpportunities(filters: OpportunityFilterParams = {}): P
  */
 export async function getOpportunityBySlug(
   slug: string,
-  userSubscriptionActive: boolean = false
+  userSubscriptionActive: boolean = false,
+  allowUnpublished: boolean = false
 ): Promise<{ opportunity: PublicOpportunity | UnlockedOpportunity | null; isUnlocked: boolean }> {
   try {
     const supabase = createPublicServerClient();
 
-    const { data, error } = await supabase
+    let query = supabase
       .from('opportunities')
       .select(`
         *,
         category:categories(id, name, slug, icon_name),
         state:locations_states(id, name, slug, geopolitical_zone)
       `)
-      .eq('slug', slug)
-      .eq('status', 'published')
-      .maybeSingle();
+      .eq('slug', slug);
+
+    if (!allowUnpublished) {
+      query = query.eq('status', 'published');
+    }
+
+    const { data, error } = await query.maybeSingle();
 
     if (!error && data) {
       const opp = data as unknown as UnlockedOpportunity;
