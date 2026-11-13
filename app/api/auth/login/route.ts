@@ -3,12 +3,15 @@ import { enforceRateLimit } from '@/lib/rate-limit';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
 
 export async function POST(req: NextRequest) {
-  // 1. Rate limiting via Upstash Redis (5 attempts per minute per IP)
-  const rateLimitResponse = await enforceRateLimit(req, 'auth_login');
-  if (rateLimitResponse) return rateLimitResponse;
-
   try {
-    const { email, password } = await req.json();
+    let body: any;
+    try {
+      body = await req.json();
+    } catch {
+      return NextResponse.json({ error: 'Invalid JSON request body' }, { status: 400 });
+    }
+
+    const { email, password } = body || {};
 
     if (!email || !password) {
       return NextResponse.json(
@@ -17,16 +20,30 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    const normalizedEmail = email.trim().toLowerCase();
+
+    // 1. Rate limiting via Upstash Redis isolated by email & client IP
+    const rateLimitResponse = await enforceRateLimit(req, 'auth_login', normalizedEmail);
+    if (rateLimitResponse) return rateLimitResponse;
+
     const supabase = createServerSupabaseClient();
     const { data, error } = await supabase.auth.signInWithPassword({
-      email: email.trim().toLowerCase(),
+      email: normalizedEmail,
       password,
     });
 
     if (error) {
+      const isSupabaseRateLimit =
+        error.message?.toLowerCase().includes('rate limit') ||
+        error.message?.toLowerCase().includes('for security purposes');
+
       return NextResponse.json(
-        { error: error.message },
-        { status: 401 }
+        {
+          error: isSupabaseRateLimit
+            ? 'Too many login attempts. Please wait a moment before trying again.'
+            : error.message,
+        },
+        { status: isSupabaseRateLimit ? 429 : 401 }
       );
     }
 

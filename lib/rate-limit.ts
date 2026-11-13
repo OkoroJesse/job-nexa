@@ -28,13 +28,13 @@ function isUpstashConfigured(): boolean {
 }
 
 type LimiterName =
-  | 'paystack_init'       // Paystack initialization: 5 req / 60 s per user/IP
-  | 'paystack_verify'     // Paystack verify: 10 req / 60 s per user/IP (must handle redirects)
-  | 'bank_transfer'       // Bank transfer submit: 3 req / 300 s per user (heavy)
-  | 'webhook_paystack'   // Paystack webhook: 60 req / 60 s per IP (Paystack retries aggressively)
-  | 'auth_login'          // Login attempts: 5 req / 60 s per IP (brute-force protection)
-  | 'auth_register'       // Registrations: 3 req / 60 s per IP (spam account protection)
-  | 'auth_forgot_password'; // Password resets: 3 req / 300 s per IP
+  | 'paystack_init'       // Paystack initialization: 10 req / 60 s per user/IP
+  | 'paystack_verify'     // Paystack verify: 20 req / 60 s per user/IP (must handle redirects)
+  | 'bank_transfer'       // Bank transfer submit: 5 req / 300 s per user
+  | 'webhook_paystack'   // Paystack webhook: 120 req / 60 s per IP (Paystack retries aggressively)
+  | 'auth_login'          // Login attempts: 10 req / 600 s (10 mins) per IP & email
+  | 'auth_register'       // Registrations: 10 req / 600 s (10 mins) per IP & email
+  | 'auth_forgot_password'; // Password resets: 5 req / 900 s (15 mins) per IP & email
 
 interface LimiterConfig {
   requests: number;
@@ -42,13 +42,13 @@ interface LimiterConfig {
 }
 
 const LIMITER_CONFIGS: Record<LimiterName, LimiterConfig> = {
-  paystack_init:        { requests: 5,  window: '60 s'  },
-  paystack_verify:      { requests: 10, window: '60 s'  },
-  bank_transfer:        { requests: 3,  window: '300 s' },
-  webhook_paystack:     { requests: 60, window: '60 s'  },
-  auth_login:           { requests: 5,  window: '60 s'  },
-  auth_register:        { requests: 3,  window: '60 s'  },
-  auth_forgot_password: { requests: 3,  window: '300 s' },
+  paystack_init:        { requests: Number(process.env.RL_PAYSTACK_INIT_LIMIT || 10), window: '60 s' },
+  paystack_verify:      { requests: Number(process.env.RL_PAYSTACK_VERIFY_LIMIT || 20), window: '60 s' },
+  bank_transfer:        { requests: Number(process.env.RL_BANK_TRANSFER_LIMIT || 5), window: '300 s' },
+  webhook_paystack:     { requests: Number(process.env.RL_WEBHOOK_LIMIT || 120), window: '60 s' },
+  auth_login:           { requests: Number(process.env.RL_AUTH_LOGIN_LIMIT || 10), window: '600 s' },
+  auth_register:        { requests: Number(process.env.RL_AUTH_REGISTER_LIMIT || 10), window: '600 s' },
+  auth_forgot_password: { requests: Number(process.env.RL_AUTH_FORGOT_PWD_LIMIT || 5), window: '900 s' },
 };
 
 // Cache Ratelimit instances so we don't re-instantiate per request
@@ -101,15 +101,33 @@ async function getLimiter(
  * NOTE: The calling route should still verify auth independently.
  * This identifier is for rate-limiting only, not for authorisation.
  */
-export function getRateLimitKey(req: NextRequest, userId?: string): string {
-  if (userId) return `uid:${userId}`;
+export function getClientIp(req: NextRequest): string {
+  // Trust standard proxy headers provided by Vercel and edge infrastructure
+  const xForwardedFor = req.headers.get('x-forwarded-for');
+  if (xForwardedFor) {
+    const firstIp = xForwardedFor.split(',')[0]?.trim();
+    if (firstIp) return firstIp;
+  }
 
-  // Vercel provides real IP via x-real-ip or x-forwarded-for
-  const ip =
-    req.headers.get('x-real-ip') ||
-    req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ||
-    '127.0.0.1';
+  const xRealIp = req.headers.get('x-real-ip');
+  if (xRealIp) return xRealIp.trim();
 
+  const cfConnectingIp = req.headers.get('cf-connecting-ip');
+  if (cfConnectingIp) return cfConnectingIp.trim();
+
+  return '127.0.0.1';
+}
+
+/**
+ * Extract a stable identifier for rate-limiting from the request.
+ * Allows isolation by user ID, account/email, or trusted client IP.
+ */
+export function getRateLimitKey(req: NextRequest, identifier?: string): string {
+  const ip = getClientIp(req);
+  if (identifier) {
+    const cleanId = identifier.trim().toLowerCase();
+    return `${cleanId}#ip:${ip}`;
+  }
   return `ip:${ip}`;
 }
 

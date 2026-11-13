@@ -24,13 +24,28 @@ export default function RegisterPage() {
     setSuccessInfo(null);
 
     try {
-      // 1. Rate-limit and server-side validation via Upstash Redis
+      // 1. Client-side email and password validation before network request
+      const cleanEmail = email.trim().toLowerCase();
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(cleanEmail)) {
+        setErrorMsg(`Please enter a valid email address (e.g. name@example.com).`);
+        setLoading(false);
+        return;
+      }
+
+      if (password.length < 6) {
+        setErrorMsg('Password must be at least 6 characters in length.');
+        setLoading(false);
+        return;
+      }
+
+      // 2. Server-side registration and rate-limiting
       const apiRes = await fetch('/api/auth/register', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           fullName,
-          email,
+          email: cleanEmail,
           password,
           state,
         }),
@@ -44,34 +59,25 @@ export default function RegisterPage() {
         return;
       }
 
-      // 2. Synchronize client-side Supabase Auth session
-      const supabase = createClient();
-      const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
-        email: email.trim().toLowerCase(),
-        password,
-        options: {
-          data: {
-            full_name: fullName.trim(),
-            state,
-          },
-        },
-      });
-
-      if (signUpError) {
-        setErrorMsg(signUpError.message);
-        setLoading(false);
-        return;
-      }
-
-      if (signUpData.session) {
-        // Direct auto-login if email confirmation is turned off in Supabase
-        router.push('/dashboard');
-      } else {
-        // Email confirmation is enabled
+      // 3. User account created on server
+      if (apiData.needsEmailConfirmation) {
         setSuccessInfo({
-          message: 'Account created! Please check your email to verify your address before signing in.',
+          message: apiData.message || 'Account created! Please check your email to verify your address before signing in.',
           needsConfirmation: true,
         });
+      } else {
+        // Hydrate client-side session if session exists, otherwise redirect to login
+        const supabase = createClient();
+        const { data: signInData } = await supabase.auth.signInWithPassword({
+          email: cleanEmail,
+          password,
+        });
+
+        if (signInData?.session) {
+          router.push('/dashboard');
+        } else {
+          router.push('/login?registered=true');
+        }
       }
     } catch {
       setErrorMsg('Unable to reach the registration server. Please try again.');

@@ -25,12 +25,12 @@ export async function GET(req: NextRequest) {
       });
     }
 
-    const supabase = createPublicServerClient();
+    // Use admin client with service role to read public display fields safely.
+    // Bank account receiving details are intended for public customer display when is_enabled = true.
+    // We only select the non-sensitive public display fields: bank_name, account_number, account_name, transfer_instructions.
+    const adminClient = (await import('@/lib/supabase/admin')).createAdminClient();
 
-    // The RLS policy allows authenticated users to read when is_enabled = true.
-    // We use the service role here (via createPublicServerClient with anon key)
-    // which still respects RLS — so only enabled configs are returned.
-    const { data, error } = await supabase
+    const { data, error } = await adminClient
       .from('bank_account_config')
       .select('bank_name, account_number, account_name, transfer_instructions, is_enabled')
       .limit(1)
@@ -54,8 +54,7 @@ export async function GET(req: NextRequest) {
       },
       {
         headers: {
-          // Cache for 5 minutes — settings don't change frequently
-          'Cache-Control': 'public, max-age=300, stale-while-revalidate=60',
+          'Cache-Control': 'no-store, max-age=0',
         },
       }
     );

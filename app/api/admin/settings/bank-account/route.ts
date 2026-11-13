@@ -151,62 +151,66 @@ export async function PATCH(req: NextRequest) {
     if (transfer_instructions !== undefined) {
       updatePayload.transfer_instructions = transfer_instructions.trim() || null;
     }
-    if (is_enabled !== undefined) {
-      // If enabling, require all fields to be present
-      if (is_enabled) {
-        const { data: current } = await adminClient
-          .from('bank_account_config')
-          .select('bank_name, account_number, account_name')
-          .limit(1)
-          .single();
+    // 1. Fetch current singleton record
+    const { data: currentRecord } = await adminClient
+      .from('bank_account_config')
+      .select('id, bank_name, account_number, account_name, transfer_instructions, is_enabled')
+      .limit(1)
+      .maybeSingle();
 
-        const finalBankName = (bank_name ?? current?.bank_name ?? '').trim();
-        const finalAccountNumber = (account_number ?? current?.account_number ?? '').trim();
-        const finalAccountName = (account_name ?? current?.account_name ?? '').trim();
+    if (is_enabled !== undefined && is_enabled) {
+      const finalBankName = (bank_name ?? currentRecord?.bank_name ?? '').trim();
+      const finalAccountNumber = (account_number ?? currentRecord?.account_number ?? '').trim();
+      const finalAccountName = (account_name ?? currentRecord?.account_name ?? '').trim();
 
-        if (!finalBankName || !finalAccountNumber || !finalAccountName) {
-          return NextResponse.json(
-            {
-              error:
-                'Cannot enable bank transfer without a complete bank account configuration. ' +
-                'Please provide bank_name, account_number, and account_name.',
-            },
-            { status: 400 }
-          );
-        }
+      if (!finalBankName || !finalAccountNumber || !finalAccountName) {
+        return NextResponse.json(
+          {
+            error:
+              'Cannot enable bank transfer without a complete bank account configuration. ' +
+              'Please provide bank_name, account_number, and account_name.',
+          },
+          { status: 400 }
+        );
       }
+    }
+
+    if (is_enabled !== undefined) {
       updatePayload.is_enabled = is_enabled;
     }
 
-    const { data, error } = await adminClient
-      .from('bank_account_config')
-      .update(updatePayload)
-      .eq('is_enabled', updatePayload.is_enabled ?? (await adminClient
+    let finalData;
+    if (currentRecord?.id) {
+      // Update by primary key
+      const { data, error } = await adminClient
         .from('bank_account_config')
-        .select('is_enabled')
-        .limit(1)
-        .single()).data?.is_enabled ?? false)
-      .select('bank_name, account_number, account_name, transfer_instructions, is_enabled')
-      .maybeSingle();
+        .update(updatePayload)
+        .eq('id', currentRecord.id)
+        .select('bank_name, account_number, account_name, transfer_instructions, is_enabled')
+        .single();
 
-    // If upsert needed (first time)
-    let finalData = data;
-    if (!finalData) {
-      const { data: upserted } = await adminClient
+      if (error) {
+        console.error('Bank config update error:', error);
+        return NextResponse.json({ error: error.message }, { status: 500 });
+      }
+      finalData = data;
+    } else {
+      // First time insert
+      const { data, error } = await adminClient
         .from('bank_account_config')
-        .upsert({
+        .insert({
           ...updatePayload,
           configured_by: adminSession.userId !== 'admin-system-root' ? adminSession.userId : null,
           configured_at: new Date().toISOString(),
         })
         .select('bank_name, account_number, account_name, transfer_instructions, is_enabled')
         .single();
-      finalData = upserted;
-    }
 
-    if (error) {
-      console.error('Bank config update error:', error);
-      return NextResponse.json({ error: error.message }, { status: 500 });
+      if (error) {
+        console.error('Bank config insert error:', error);
+        return NextResponse.json({ error: error.message }, { status: 500 });
+      }
+      finalData = data;
     }
 
     // Write audit log

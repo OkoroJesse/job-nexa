@@ -3,16 +3,28 @@ import { enforceRateLimit } from '@/lib/rate-limit';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
 
 export async function POST(req: NextRequest) {
-  // 1. Rate limiting via Upstash Redis (3 registrations per minute per IP)
-  const rateLimitResponse = await enforceRateLimit(req, 'auth_register');
-  if (rateLimitResponse) return rateLimitResponse;
-
   try {
-    const { email, password, fullName, state } = await req.json();
+    let body: any;
+    try {
+      body = await req.json();
+    } catch {
+      return NextResponse.json({ error: 'Invalid JSON request body' }, { status: 400 });
+    }
+
+    const { email, password, fullName, state } = body || {};
 
     if (!email || !password) {
       return NextResponse.json(
         { error: 'Email and password are required' },
+        { status: 400 }
+      );
+    }
+
+    const normalizedEmail = email.trim().toLowerCase();
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(normalizedEmail)) {
+      return NextResponse.json(
+        { error: `Email address "${email}" is invalid` },
         { status: 400 }
       );
     }
@@ -24,9 +36,13 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    // Rate limit per IP + email key after input validation passes
+    const rateLimitResponse = await enforceRateLimit(req, 'auth_register', normalizedEmail);
+    if (rateLimitResponse) return rateLimitResponse;
+
     const supabase = createServerSupabaseClient();
     const { data, error } = await supabase.auth.signUp({
-      email: email.trim().toLowerCase(),
+      email: normalizedEmail,
       password,
       options: {
         data: {
@@ -37,9 +53,18 @@ export async function POST(req: NextRequest) {
     });
 
     if (error) {
+      // Distinguish Supabase built-in auth rate limits from generic errors
+      const isSupabaseRateLimit =
+        error.message?.toLowerCase().includes('rate limit') ||
+        error.message?.toLowerCase().includes('for security purposes');
+
       return NextResponse.json(
-        { error: error.message },
-        { status: 400 }
+        {
+          error: isSupabaseRateLimit
+            ? 'Account registration temporarily throttled by authentication security. Please wait a moment before trying again.'
+            : error.message,
+        },
+        { status: isSupabaseRateLimit ? 429 : 400 }
       );
     }
 

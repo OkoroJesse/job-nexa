@@ -3,12 +3,15 @@ import { enforceRateLimit } from '@/lib/rate-limit';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
 
 export async function POST(req: NextRequest) {
-  // 1. Rate limiting via Upstash Redis (3 password reset requests per 5 minutes per IP)
-  const rateLimitResponse = await enforceRateLimit(req, 'auth_forgot_password');
-  if (rateLimitResponse) return rateLimitResponse;
-
   try {
-    const { email } = await req.json();
+    let body: any;
+    try {
+      body = await req.json();
+    } catch {
+      return NextResponse.json({ error: 'Invalid JSON request body' }, { status: 400 });
+    }
+
+    const { email } = body || {};
 
     if (!email || !email.includes('@')) {
       return NextResponse.json(
@@ -17,11 +20,17 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    const normalizedEmail = email.trim().toLowerCase();
+
+    // Rate limiting via Upstash Redis isolated by email & client IP
+    const rateLimitResponse = await enforceRateLimit(req, 'auth_forgot_password', normalizedEmail);
+    if (rateLimitResponse) return rateLimitResponse;
+
     const supabase = createServerSupabaseClient();
     const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000';
     const redirectUrl = `${siteUrl}/reset-password`;
 
-    const { error } = await supabase.auth.resetPasswordForEmail(email.trim().toLowerCase(), {
+    const { error } = await supabase.auth.resetPasswordForEmail(normalizedEmail, {
       redirectTo: redirectUrl,
     });
 
